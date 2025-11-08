@@ -22,21 +22,15 @@ const Navigation: React.FC = () => {
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
           <Link to="/dashboard" className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-              <i className="ri-graduation-cap-line text-white"></i>
+          <div className="w-12 h-12 bg-blue-500 rounded-full overflow-hidden flex items-center justify-center shadow-md">
+              <img src="/logo-square.png" alt="Logo HSV" className="rounded-full w-10 h-10 object-cover" />
             </div>
-            <span className="text-xl font-bold text-gray-800">Đại hội HSV</span>
+            <span className="text-xl font-bold text-gray-800">Đại hội Hội sinh viên</span>
           </Link>
 
           {/* Desktop Menu */}
           <div className="hidden md:flex items-center space-x-6">
-            <Link
-              to="/dashboard"
-              className="text-gray-600 hover:text-blue-600 transition-colors"
-            >
-              <i className="ri-dashboard-line mr-1"></i>
-              Trang chủ
-            </Link>
+        
             <Link
               to="/wishes"
               className="text-gray-600 hover:text-blue-600 transition-colors"

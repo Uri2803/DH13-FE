@@ -42,11 +42,19 @@ const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4 bg-cover bg-center"
+     style={{ backgroundImage: "url('/bg.png')" }}>
+
+      <div className="w-full max-w-md" >
+
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
-            <i className="ri-graduation-cap-line text-2xl text-white"></i>
+          <div className="w-17 h-17 rounded-full flex items-center justify-center mx-auto mb-4">
+            <img
+              src="logo-square.png" // thay bằng đường dẫn logo của bạn
+              alt="Logo"
+              className="w-16 h-16 object-cover rounded-full"
+            />
+            {/* <i className="ri-graduation-cap-line text-2xl text-white"></i> */}
           </div>
           <h1 className="text-2xl font-bold text-gray-800 mb-2">Đăng nhập hệ thống</h1>
           <p className="text-gray-600">Đại hội Hội sinh viên ĐHQG-HCM</p>

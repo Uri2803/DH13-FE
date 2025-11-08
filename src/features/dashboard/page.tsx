@@ -44,12 +44,15 @@ const DashboardPage: React.FC = () => {
   const quickActions = getQuickActions();
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-cyan-50 via-white to-cyan-100">
       <Navigation />
       
-      <div className="container mx-auto px-4 py-8">
+
+
+      <div className="container mx-auto px-4 py-8" >
         {/* Welcome Section */}
         <div className="mb-8">
+          
           <h1 className="text-3xl font-bold text-gray-800 mb-2">
             Chào mừng, {user.fullName}!
           </h1>
