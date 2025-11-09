@@ -1,55 +1,190 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Navigation } from '../../components/feature/Navigation';
 import { Card } from '../../components/base/Card';
 import { Button } from '../../components/base/Button';
 import { useAuth } from '../../hooks/useAuth';
-import { mockDelegates } from '../../mocks/delegates';
+import { getInfor, updateInfor } from '../../services/auth';
+import api from '../../lib/api'; // axios instance: baseURL + withCredentials: true
+
+type DelegateVM = {
+  id?: number | string;
+  fullName: string;
+  delegateCode?: string;
+  position?: string;
+  studentId?: string;
+  birthDate?: string;
+  gender?: string;
+  religion?: string;
+  ethnicity?: string;
+  unionJoinDate?: string;
+  partyJoinDate?: string;     // (ở BE là joinAssociationDate)
+  partyMember?: boolean;      // isPartyMember
+  academicYear?: number;      // studentYear
+  gpa?: string | number;      // academicScore
+  achievements?: string;
+  shirtSize?: string;
+  phone?: string;
+  email?: string;
+  unit?: string;
+  checkedIn?: boolean;
+  checkinTime?: string;
+};
+
+const dateToInput = (d?: string | Date | null) => {
+  if (!d) return '';
+  const dt = typeof d === 'string' ? new Date(d) : d;
+  if (Number.isNaN(dt.getTime())) return '';
+  return dt.toISOString().slice(0, 10);
+};
+
+const dateToVN = (d?: string | Date | null) => {
+  if (!d) return '';
+  const dt = typeof d === 'string' ? new Date(d) : d;
+  if (Number.isNaN(dt.getTime())) return '';
+  return dt.toLocaleDateString('vi-VN');
+};
 
 const ProfilePage: React.FC = () => {
   const { user } = useAuth();
-  const [delegate, setDelegate] = useState<any>(null);
-  const [editing, setEditing] = useState(false);
-  const [formData, setFormData] = useState<any>({});
-  const [saving, setSaving] = useState(false);
+  const [delegate, setDelegate]     = useState<DelegateVM | null>(null);
+  const [editing, setEditing]       = useState(false);
+  const [formData, setFormData]     = useState<DelegateVM | null>(null);
+  const [saving, setSaving]         = useState(false);
+  const [loading, setLoading]       = useState(true);
+  const [loadError, setLoadError]   = useState<string>('');
+  const [saveError, setSaveError]   = useState<string>('');
+
+  const normalize = (apiUser: any): DelegateVM => {
+    const di = apiUser?.delegateInfo ?? {};
+    return {
+      id: di?.id ?? apiUser?.id,
+      fullName: apiUser?.name || apiUser?.fullName || '',
+      delegateCode: di?.code ?? apiUser?.code,
+      position: di?.position,
+      studentId: apiUser?.mssv ?? di?.mssv_or_mscb,
+      birthDate: dateToInput(di?.dateOfBirth),
+      gender: di?.gender,
+      religion: di?.religion,
+      ethnicity: di?.ethnicity,
+      unionJoinDate: dateToInput(di?.joinUnionDate),
+      partyJoinDate: dateToInput(di?.joinAssociationDate),
+      partyMember: !!di?.isPartyMember,
+      academicYear: di?.studentYear ? Number(di?.studentYear) : undefined,
+      gpa: di?.academicScore,
+      achievements: di?.achievements,
+      shirtSize: di?.shirtSize,
+      phone: di?.phone,
+      email: di?.email ?? apiUser?.email,
+      unit: apiUser?.department?.name,
+      checkedIn: !!di?.checkedIn,
+      checkinTime: di?.checkinTime,
+    };
+  };
 
   useEffect(() => {
-    // Tìm thông tin đại biểu từ mock data
-    if (user?.role === 'delegate') {
-      const delegateInfo = mockDelegates.find(d => d.delegateCode === user.delegateCode);
-      if (delegateInfo) {
-        setDelegate(delegateInfo);
-        setFormData(delegateInfo);
+    let mounted = true;
+    (async () => {
+      try {
+        setLoading(true);
+        setLoadError('');
+
+        if (!user) {
+          setLoadError('Vui lòng đăng nhập.');
+          return;
+        }
+        if (user.role !== 'delegate') {
+          setLoadError('Chỉ đại biểu mới có trang hồ sơ này.');
+          return;
+        }
+
+        const res = await getInfor();
+        const vm  = normalize(res);
+        if (mounted) {
+          setDelegate(vm);
+          setFormData(vm);
+        }
+      } catch (err: any) {
+        if (mounted) setLoadError(err?.message || 'Không tải được hồ sơ.');
+      } finally {
+        if (mounted) setLoading(false);
       }
-    }
+    })();
+    return () => {
+      mounted = false;
+    };
   }, [user]);
 
-  const handleInputChange = (field: string, value: string) => {
-    setFormData({ ...formData, [field]: value });
+  const handleInputChange = (field: keyof DelegateVM, value: any) => {
+    setFormData(prev => ({ ...(prev || {}), [field]: value }) as DelegateVM);
+  };
+
+  const updateDelegateInfo = async (payload: any) =>{
+    return updateInfor(payload)
   };
 
   const handleSave = async () => {
-    setSaving(true);
-    
-    // Simulate API call
-    setTimeout(() => {
-      setDelegate(formData);
+    if (!formData) return;
+
+    try {
+      setSaving(true);
+      setSaveError('');
+
+      const payload = {
+        code: formData.delegateCode,
+        position: formData.position,
+        mssv_or_mscb: formData.studentId,
+        dateOfBirth: formData.birthDate || null,
+        gender: formData.gender,
+        religion: formData.religion,
+        ethnicity: formData.ethnicity,
+        joinUnionDate: formData.unionJoinDate || null,
+        joinAssociationDate: formData.partyJoinDate || null,
+        isPartyMember: !!formData.partyMember,
+        studentYear: formData.academicYear ? Number(formData.academicYear) : null,
+        academicScore:
+          typeof formData.gpa === 'number' ? formData.gpa.toFixed(2) : formData.gpa,
+        achievements: formData.achievements,
+        shirtSize: formData.shirtSize,
+        phone: formData.phone,
+        email: formData.email,
+      };
+
+      await updateDelegateInfo(payload);
+
+
+      const latest = await getInfor();
+      const vm = normalize(latest);
+      setDelegate(vm);
+      setFormData(vm);
       setEditing(false);
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Không thể lưu thay đổi.';
+      setSaveError(Array.isArray(msg) ? msg[0] : msg);
+    } finally {
       setSaving(false);
-    }, 1000);
+    }
   };
 
-  const handleCancel = () => {
-    setFormData(delegate);
-    setEditing(false);
-  };
-
-  if (!delegate) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-gray-50">
         <Navigation />
-        <div className="container mx-auto px-4 py-8 text-center">
-          <div className="text-gray-600">Không tìm thấy thông tin đại biểu</div>
+        <div className="container mx-auto px-4 py-12 text-center text-gray-600">
+          <i className="ri-loader-4-line animate-spin mr-2" />
+          Đang tải hồ sơ...
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError || !delegate) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Navigation />
+        <div className="container mx-auto px-4 py-8">
+          <div className="bg-red-50 text-red-700 border border-red-200 rounded-md p-4">
+            {loadError || 'Không tìm thấy thông tin đại biểu'}
+          </div>
         </div>
       </div>
     );
@@ -58,7 +193,7 @@ const ProfilePage: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navigation />
-      
+
       <div className="container mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-8">
           <div>
@@ -72,7 +207,7 @@ const ProfilePage: React.FC = () => {
             </Button>
           ) : (
             <div className="flex space-x-2">
-              <Button onClick={handleCancel} variant="secondary">
+              <Button onClick={() => { setFormData(delegate); setEditing(false); }} variant="secondary">
                 <i className="ri-close-line mr-2"></i>
                 Hủy
               </Button>
@@ -93,29 +228,36 @@ const ProfilePage: React.FC = () => {
           )}
         </div>
 
+        {saveError && (
+          <div className="mb-6 bg-red-50 text-red-700 border border-red-200 rounded-md p-3">
+            <i className="ri-error-warning-line mr-2" />
+            {saveError}
+          </div>
+        )}
+
         <div className="grid lg:grid-cols-3 gap-8">
-          {/* Profile Summary */}
+          {/* Tóm tắt */}
           <Card>
             <div className="text-center">
               <div className="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <i className="ri-user-line text-3xl text-blue-600"></i>
               </div>
-              <h2 className="text-xl font-semibold text-gray-800 mb-1">{delegate.fullName}</h2>
-              <p className="text-gray-600 mb-2">{delegate.delegateCode}</p>
-              <p className="text-sm text-gray-500 mb-4">{delegate.position}</p>
-              
+              <h2 className="text-xl font-semibold text-gray-800 mb-1">{delegate.fullName || '-'}</h2>
+              <p className="text-gray-600 mb-2">{delegate.delegateCode || '-'}</p>
+              <p className="text-sm text-gray-500 mb-4">{delegate.position || '-'}</p>
+
               <div className="space-y-2 text-sm">
                 <div className="flex items-center justify-center space-x-2">
                   <i className="ri-building-line text-gray-400"></i>
-                  <span>{delegate.unit}</span>
+                  <span>{delegate.unit || '-'}</span>
                 </div>
                 <div className="flex items-center justify-center space-x-2">
                   <i className="ri-phone-line text-gray-400"></i>
-                  <span>{delegate.phone}</span>
+                  <span>{delegate.phone || '-'}</span>
                 </div>
                 <div className="flex items-center justify-center space-x-2">
                   <i className="ri-mail-line text-gray-400"></i>
-                  <span>{delegate.email}</span>
+                  <span>{delegate.email || '-'}</span>
                 </div>
               </div>
 
@@ -126,21 +268,21 @@ const ProfilePage: React.FC = () => {
                     Đã điểm danh
                   </div>
                   <div className="text-xs text-green-500 mt-1">
-                    {new Date(delegate.checkinTime).toLocaleString('vi-VN')}
+                    {delegate.checkinTime ? new Date(delegate.checkinTime).toLocaleString('vi-VN') : ''}
                   </div>
                 </div>
               )}
             </div>
           </Card>
 
-          {/* Profile Details */}
+          {/* Chi tiết */}
           <div className="lg:col-span-2 space-y-6">
             <Card>
               <h3 className="text-lg font-semibold mb-4 flex items-center">
                 <i className="ri-user-settings-line text-blue-500 mr-2"></i>
                 Thông tin cá nhân
               </h3>
-              
+
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -149,12 +291,12 @@ const ProfilePage: React.FC = () => {
                   {editing ? (
                     <input
                       type="text"
-                      value={formData.fullName}
+                      value={formData?.fullName || ''}
                       onChange={(e) => handleInputChange('fullName', e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   ) : (
-                    <div className="py-2 text-gray-800">{delegate.fullName}</div>
+                    <div className="py-2 text-gray-800">{delegate.fullName || '-'}</div>
                   )}
                 </div>
 
@@ -165,12 +307,12 @@ const ProfilePage: React.FC = () => {
                   {editing ? (
                     <input
                       type="text"
-                      value={formData.studentId}
+                      value={formData?.studentId || ''}
                       onChange={(e) => handleInputChange('studentId', e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   ) : (
-                    <div className="py-2 text-gray-800">{delegate.studentId}</div>
+                    <div className="py-2 text-gray-800">{delegate.studentId || '-'}</div>
                   )}
                 </div>
 
@@ -181,13 +323,13 @@ const ProfilePage: React.FC = () => {
                   {editing ? (
                     <input
                       type="date"
-                      value={formData.birthDate}
+                      value={formData?.birthDate || ''}
                       onChange={(e) => handleInputChange('birthDate', e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   ) : (
                     <div className="py-2 text-gray-800">
-                      {new Date(delegate.birthDate).toLocaleDateString('vi-VN')}
+                      {delegate.birthDate ? dateToVN(delegate.birthDate) : '-'}
                     </div>
                   )}
                 </div>
@@ -198,15 +340,16 @@ const ProfilePage: React.FC = () => {
                   </label>
                   {editing ? (
                     <select
-                      value={formData.gender}
+                      value={formData?.gender || ''}
                       onChange={(e) => handleInputChange('gender', e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-8"
                     >
+                      <option value="">-- Chọn --</option>
                       <option value="Nam">Nam</option>
                       <option value="Nữ">Nữ</option>
                     </select>
                   ) : (
-                    <div className="py-2 text-gray-800">{delegate.gender}</div>
+                    <div className="py-2 text-gray-800">{delegate.gender || '-'}</div>
                   )}
                 </div>
 
@@ -217,12 +360,12 @@ const ProfilePage: React.FC = () => {
                   {editing ? (
                     <input
                       type="text"
-                      value={formData.religion}
+                      value={formData?.religion || ''}
                       onChange={(e) => handleInputChange('religion', e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   ) : (
-                    <div className="py-2 text-gray-800">{delegate.religion}</div>
+                    <div className="py-2 text-gray-800">{delegate.religion || '-'}</div>
                   )}
                 </div>
 
@@ -233,12 +376,12 @@ const ProfilePage: React.FC = () => {
                   {editing ? (
                     <input
                       type="text"
-                      value={formData.ethnicity}
+                      value={formData?.ethnicity || ''}
                       onChange={(e) => handleInputChange('ethnicity', e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   ) : (
-                    <div className="py-2 text-gray-800">{delegate.ethnicity}</div>
+                    <div className="py-2 text-gray-800">{delegate.ethnicity || '-'}</div>
                   )}
                 </div>
 
@@ -249,12 +392,12 @@ const ProfilePage: React.FC = () => {
                   {editing ? (
                     <input
                       type="tel"
-                      value={formData.phone}
+                      value={formData?.phone || ''}
                       onChange={(e) => handleInputChange('phone', e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   ) : (
-                    <div className="py-2 text-gray-800">{delegate.phone}</div>
+                    <div className="py-2 text-gray-800">{delegate.phone || '-'}</div>
                   )}
                 </div>
 
@@ -265,12 +408,12 @@ const ProfilePage: React.FC = () => {
                   {editing ? (
                     <input
                       type="email"
-                      value={formData.email}
+                      value={formData?.email || ''}
                       onChange={(e) => handleInputChange('email', e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   ) : (
-                    <div className="py-2 text-gray-800">{delegate.email}</div>
+                    <div className="py-2 text-gray-800">{delegate.email || '-'}</div>
                   )}
                 </div>
               </div>
@@ -281,7 +424,7 @@ const ProfilePage: React.FC = () => {
                 <i className="ri-government-line text-red-500 mr-2"></i>
                 Thông tin chính trị - xã hội
               </h3>
-              
+
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -290,34 +433,51 @@ const ProfilePage: React.FC = () => {
                   {editing ? (
                     <input
                       type="date"
-                      value={formData.unionJoinDate}
+                      value={formData?.unionJoinDate || ''}
                       onChange={(e) => handleInputChange('unionJoinDate', e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   ) : (
                     <div className="py-2 text-gray-800">
-                      {new Date(delegate.unionJoinDate).toLocaleDateString('vi-VN')}
+                      {delegate.unionJoinDate ? dateToVN(delegate.unionJoinDate) : '-'}
                     </div>
                   )}
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Ngày vào Đảng
+                    Ngày vào Hội
                   </label>
                   {editing ? (
                     <input
                       type="date"
-                      value={formData.partyJoinDate}
+                      value={formData?.partyJoinDate || ''}
                       onChange={(e) => handleInputChange('partyJoinDate', e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   ) : (
                     <div className="py-2 text-gray-800">
-                      {delegate.partyJoinDate ? 
-                        new Date(delegate.partyJoinDate).toLocaleDateString('vi-VN') : 
-                        'Chưa là đảng viên'
-                      }
+                      {delegate.partyJoinDate ? dateToVN(delegate.partyJoinDate) : '-'}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Đảng viên
+                  </label>
+                  {editing ? (
+                    <select
+                      value={String(!!formData?.partyMember)}
+                      onChange={(e) => handleInputChange('partyMember', e.target.value === 'true')}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-8"
+                    >
+                      <option value="false">Chưa</option>
+                      <option value="true">Đã là đảng viên</option>
+                    </select>
+                  ) : (
+                    <div className="py-2 text-gray-800">
+                      {delegate.partyMember ? 'Đã là đảng viên' : 'Chưa'}
                     </div>
                   )}
                 </div>
@@ -328,18 +488,17 @@ const ProfilePage: React.FC = () => {
                   </label>
                   {editing ? (
                     <select
-                      value={formData.academicYear}
-                      onChange={(e) => handleInputChange('academicYear', e.target.value)}
+                      value={formData?.academicYear ?? ''}
+                      onChange={(e) => handleInputChange('academicYear', Number(e.target.value))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-8"
                     >
-                      <option value={1}>Năm 1</option>
-                      <option value={2}>Năm 2</option>
-                      <option value={3}>Năm 3</option>
-                      <option value={4}>Năm 4</option>
-                      <option value={5}>Năm 5</option>
+                      <option value="">-- Chọn --</option>
+                      {[1,2,3,4,5].map(n => <option key={n} value={n}>Năm {n}</option>)}
                     </select>
                   ) : (
-                    <div className="py-2 text-gray-800">Năm {delegate.academicYear}</div>
+                    <div className="py-2 text-gray-800">
+                      {delegate.academicYear ? `Năm ${delegate.academicYear}` : '-'}
+                    </div>
                   )}
                 </div>
 
@@ -353,12 +512,14 @@ const ProfilePage: React.FC = () => {
                       step="0.01"
                       min="0"
                       max="4"
-                      value={formData.gpa}
+                      value={formData?.gpa ?? ''}
                       onChange={(e) => handleInputChange('gpa', e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   ) : (
-                    <div className="py-2 text-gray-800">{delegate.gpa}/4.0</div>
+                    <div className="py-2 text-gray-800">
+                      {delegate.gpa ? `${delegate.gpa}/4.0` : '-'}
+                    </div>
                   )}
                 </div>
 
@@ -368,18 +529,15 @@ const ProfilePage: React.FC = () => {
                   </label>
                   {editing ? (
                     <select
-                      value={formData.shirtSize}
+                      value={formData?.shirtSize || ''}
                       onChange={(e) => handleInputChange('shirtSize', e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-8"
                     >
-                      <option value="S">S</option>
-                      <option value="M">M</option>
-                      <option value="L">L</option>
-                      <option value="XL">XL</option>
-                      <option value="XXL">XXL</option>
+                      <option value="">-- Chọn --</option>
+                      {['S','M','L','XL','XXL'].map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   ) : (
-                    <div className="py-2 text-gray-800">{delegate.shirtSize}</div>
+                    <div className="py-2 text-gray-800">{delegate.shirtSize || '-'}</div>
                   )}
                 </div>
               </div>
@@ -390,21 +548,21 @@ const ProfilePage: React.FC = () => {
                 <i className="ri-trophy-line text-yellow-500 mr-2"></i>
                 Thành tích
               </h3>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Thành tích nổi bật
                 </label>
                 {editing ? (
                   <textarea
-                    value={formData.achievements}
+                    value={formData?.achievements || ''}
                     onChange={(e) => handleInputChange('achievements', e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     rows={3}
                     maxLength={500}
                   />
                 ) : (
-                  <div className="py-2 text-gray-800">{delegate.achievements}</div>
+                  <div className="py-2 text-gray-800">{delegate.achievements || '-'}</div>
                 )}
               </div>
             </Card>

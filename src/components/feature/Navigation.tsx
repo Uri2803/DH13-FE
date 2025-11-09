@@ -14,7 +14,7 @@ const Navigation: React.FC = () => {
   };
 
   const isAdmin = user?.role === 'admin';
-  const displayName = user?.fullName || user?.username || 'Khách';
+  const displayName = user?.name || user?.code|| 'Khách';
 
   return (
     <nav className="bg-white shadow-lg border-b border-gray-200">

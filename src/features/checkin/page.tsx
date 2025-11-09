@@ -1,109 +1,100 @@
+// src/pages/checkin/CheckinPage.tsx
 import React, { useEffect, useRef, useState } from 'react';
 import jsQR from 'jsqr';
-import { BrowserMultiFormatReader } from '@zxing/browser';
 import { Navigation } from '../../components/feature/Navigation';
 import { Card } from '../../components/base/Card';
 import { Button } from '../../components/base/Button';
 import { useAuth } from '../../hooks/useAuth';
 import { mockDelegates } from '../../mocks/delegates';
+import { checkinByQr, checkinManual } from '../../services/checkin';
+import { getSocket } from '../../utils/socket';
+
+type Delegate = typeof mockDelegates[number];
 
 const CheckinPage: React.FC = () => {
   const { user } = useAuth();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Dùng ref để điều khiển vòng lặp quét
+  // vòng lặp quét
   const scanningRef = useRef<boolean>(false);
   const rafRef = useRef<number | null>(null);
 
   const [scanning, setScanning] = useState(false);
-  const [delegates, setDelegates] = useState(mockDelegates);
+  const [delegates, setDelegates] = useState<Delegate[]>(mockDelegates);
   const [checkedInDelegate, setCheckedInDelegate] = useState<any>(null);
   const [showSuccess, setShowSuccess] = useState(false);
 
-  // Kiểm tra quyền admin
+  // chỉ admin mới vào trang này
   useEffect(() => {
     if (user?.role !== 'admin') {
       window.history.back();
     }
   }, [user]);
 
-  // =============================
-  // 🎥 START CAMERA + SCAN LOOP
-  // =============================
-  const startCamera = () => {
-  setScanning(true);
-};
+  // ======= CAMERA + SCAN LOOP =======
+  const startCamera = () => setScanning(true);
 
-useEffect(() => {
-  if (!scanning) return;
+  useEffect(() => {
+    if (!scanning) return;
 
-  let stream: MediaStream | null = null;
-  let stopped = false;
+    let stream: MediaStream | null = null;
 
-  (async () => {
-    try {
-      // (Khuyên) kiểm tra secure context để tránh lỗi im lặng trên HTTP không phải localhost
-      console.log('[checkin] secure=', window.isSecureContext, 'origin=', location.origin);
-
-      // xin camera (ưu tiên camera sau, fallback)
+    const boot = async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' } },
-          audio: false
+        // mở camera (ưu tiên camera sau)
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: 'environment' } },
+            audio: false,
+          });
+        } catch {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        }
+
+        let video = videoRef.current;
+        if (!video) {
+          await new Promise(requestAnimationFrame);
+          video = videoRef.current!;
+        }
+        video.srcObject = stream!;
+        video.setAttribute('playsinline', 'true');
+        video.muted = true;
+
+        await new Promise<void>((res) => {
+          const onLoaded = () => {
+            video!.removeEventListener('loadedmetadata', onLoaded);
+            res();
+          };
+          video!.addEventListener('loadedmetadata', onLoaded);
         });
-      } catch (e) {
-        console.warn('[checkin] fallback default camera', e);
-        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        await video.play();
+
+        scanningRef.current = true;
+        rafRef.current = requestAnimationFrame(tick);
+      } catch (err) {
+        console.error('Không thể mở camera:', err);
+        alert('Không thể mở camera. Chuyển sang chế độ demo.');
+        setScanning(false);
+        handleDemoCheckin();
       }
+    };
 
-      // Bây giờ <video> đã được mount vì scanning === true
-      let video = videoRef.current;
-      if (!video) {
-        // chờ 1 frame để đảm bảo ref có mặt
-        await new Promise(requestAnimationFrame);
-        video = videoRef.current;
+    boot();
+
+    return () => {
+      scanningRef.current = false;
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
       }
-      if (!video) throw new Error('Video element chưa sẵn sàng');
-
-      video.srcObject = stream!;
-      video.setAttribute('playsinline', 'true'); // iOS/Safari
-      video.muted = true;
-
-      // chờ metadata rồi play
-      await new Promise<void>((res) => {
-        const onLoaded = () => { video!.removeEventListener('loadedmetadata', onLoaded); res(); };
-        video!.addEventListener('loadedmetadata', onLoaded);
-      });
-      await video.play();
-
-      console.log('✅ Camera started');
-      scanningRef.current = true;
-      rafRef.current = requestAnimationFrame(tick);
-    } catch (err) {
-      console.error('❌ Lỗi khi mở camera:', err);
-      alert('Không thể mở camera. Chuyển sang chế độ demo.');
-      setScanning(false);
-      handleDemoCheckin();
-    }
-  })();
-
-  // cleanup khi tắt scanning hoặc unmount
-  return () => {
-    scanningRef.current = false;
-    if (rafRef.current) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    }
-    if (stream) {
-      stream.getTracks().forEach(t => t.stop());
-      stream = null;
-    }
-    if (videoRef.current) videoRef.current.srcObject = null;
-  };
-}, [scanning]);
-
-
+      if (stream) {
+        stream.getTracks().forEach((t) => t.stop());
+        stream = null;
+      }
+      if (videoRef.current) videoRef.current.srcObject = null;
+    };
+  }, [scanning]);
 
   const stopCamera = () => {
     scanningRef.current = false;
@@ -111,18 +102,12 @@ useEffect(() => {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
-
     const stream = videoRef.current?.srcObject as MediaStream | null;
-    stream?.getTracks().forEach(track => track.stop());
+    stream?.getTracks().forEach((t) => t.stop());
     if (videoRef.current) videoRef.current.srcObject = null;
-
     setScanning(false);
-    console.log('🛑 Camera stopped');
   };
 
-  // =============================
-  // 🔍 SCAN LOOP
-  // =============================
   const tick = () => {
     if (!scanningRef.current) return;
 
@@ -132,13 +117,10 @@ useEffect(() => {
       rafRef.current = requestAnimationFrame(tick);
       return;
     }
-
-    // Chờ khi camera đã có dữ liệu
     if (video.readyState < 2) {
       rafRef.current = requestAnimationFrame(tick);
       return;
     }
-
     const ctx = canvas.getContext('2d');
     if (!ctx) {
       rafRef.current = requestAnimationFrame(tick);
@@ -149,67 +131,94 @@ useEffect(() => {
     canvas.height = video.videoHeight;
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const code = jsQR(imgData.data, canvas.width, canvas.height);
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(img.data, canvas.width, canvas.height);
 
     if (code?.data) {
-      console.log('✅ QR code detected:', code.data);
       handleQRCheckin(code.data.trim());
       stopCamera();
       return;
     }
-
     rafRef.current = requestAnimationFrame(tick);
   };
 
-  // Dọn tài nguyên khi thoát trang
-  useEffect(() => {
-    return () => stopCamera();
-  }, []);
+  useEffect(() => () => stopCamera(), []);
 
-  // =============================
-  // 🎯 CHECKIN LOGIC
-  // =============================
-  const handleQRCheckin = (qrData: string) => {
-    const delegate = delegates.find(d => d.delegateCode === qrData);
-    if (delegate && !delegate.checkedIn) {
-      const updated = { ...delegate, checkedIn: true, checkinTime: new Date().toISOString() };
-      setCheckedInDelegate(updated);
-      setDelegates(prev => prev.map(d => (d.id === delegate.id ? updated : d)));
-      setShowSuccess(true);
-      speak(`Điểm danh thành công. ${updated.fullName}, ${updated.unit}`);
-    } else {
-      alert('❌ Mã QR không hợp lệ hoặc đã điểm danh.');
+  // ======= CHECKIN LOGIC =======
+  const speak = (text: string) => {
+    if ('speechSynthesis' in window) {
+      const ut = new SpeechSynthesisUtterance(text);
+      ut.lang = 'vi-VN';
+      speechSynthesis.speak(ut);
+    }
+  };
+
+  const finishLocalUpdate = (d: {
+    id: number | string;
+    code: string;
+    fullName: string;
+    unit?: string;
+    position?: string;
+    checkedIn: boolean;
+    checkinTime?: string;
+  }) => {
+    setCheckedInDelegate({
+      id: d.id,
+      fullName: d.fullName,
+      delegateCode: d.code,
+      unit: d.unit,
+      position: d.position,
+      checkedIn: d.checkedIn,
+      checkinTime: d.checkinTime,
+    });
+    setDelegates((prev) =>
+      prev.map((x) =>
+        String(x.id) === String(d.id) ? { ...x, checkedIn: true, checkinTime: d.checkinTime } : x
+      )
+    );
+    setShowSuccess(true);
+    speak(`Điểm danh thành công. ${d.fullName}${d.unit ? `, ${d.unit}` : ''}`);
+  };
+
+  const handleQRCheckin = async (qrData: string) => {
+    try {
+      const { data } = await checkinByQr(qrData);
+      if (data?.ok) {
+        finishLocalUpdate(data.delegate);
+      } else {
+        alert('QR không hợp lệ.');
+      }
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.response?.data?.message || 'Không thể điểm danh bằng QR');
+    }
+  };
+
+  const handleManualCheckin = async (id: string | number) => {
+    try {
+      const { data } = await checkinManual(Number(id));
+      if (data?.ok) {
+        finishLocalUpdate(data.delegate);
+      }
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.response?.data?.message || 'Không thể điểm danh thủ công');
     }
   };
 
   const handleDemoCheckin = () => {
-    const unChecked = delegates.find(d => !d.checkedIn);
+    const unChecked = delegates.find((d) => !d.checkedIn);
     if (unChecked) {
-      const updated = { ...unChecked, checkedIn: true, checkinTime: new Date().toISOString() };
-      setCheckedInDelegate(updated);
-      setDelegates(prev => prev.map(d => (d.id === unChecked.id ? updated : d)));
-      setShowSuccess(true);
-      speak(`Điểm danh thành công. ${updated.fullName}, ${updated.unit}`);
-    }
-  };
-
-  const handleManualCheckin = (id: string) => {
-    const delegate = delegates.find(d => d.id === id);
-    if (delegate && !delegate.checkedIn) {
-      const updated = { ...delegate, checkedIn: true, checkinTime: new Date().toISOString() };
-      setCheckedInDelegate(updated);
-      setDelegates(prev => prev.map(d => (d.id === id ? updated : d)));
-      setShowSuccess(true);
-      speak(`Điểm danh thành công. ${updated.fullName}, ${updated.unit}`);
-    }
-  };
-
-  const speak = (text: string) => {
-    if ('speechSynthesis' in window) {
-      const utter = new SpeechSynthesisUtterance(text);
-      utter.lang = 'vi-VN';
-      speechSynthesis.speak(utter);
+      const updated = {
+        id: unChecked.id,
+        code: unChecked.delegateCode,
+        fullName: unChecked.fullName,
+        unit: unChecked.unit,
+        position: unChecked.position,
+        checkedIn: true,
+        checkinTime: new Date().toISOString(),
+      };
+      finishLocalUpdate(updated);
     }
   };
 
@@ -218,11 +227,27 @@ useEffect(() => {
     setCheckedInDelegate(null);
   };
 
-  // =============================
-  // 📊 UI
-  // =============================
+  // (tuỳ chọn) nghe realtime để nếu có máy khác điểm danh, danh sách trang này cũng đổi theo
+  useEffect(() => {
+    const s = getSocket();
+    const onUpdate = (evt: { delegateId: number | string; checkedIn: boolean; checkinTime?: string }) => {
+      setDelegates((prev) =>
+        prev.map((x) =>
+          String(x.id) === String(evt.delegateId)
+            ? { ...x, checkedIn: evt.checkedIn, checkinTime: evt.checkinTime }
+            : x
+        )
+      );
+    };
+    s.on('checkin.updated', onUpdate);
+    return () => {
+      s.off('checkin.updated', onUpdate);
+    };
+  }, []);
+
+  // ======= UI =======
   const total = delegates.length;
-  const checked = delegates.filter(d => d.checkedIn).length;
+  const checked = delegates.filter((d) => d.checkedIn).length;
   const rate = Math.round((checked / total) * 100);
 
   return (
@@ -233,7 +258,7 @@ useEffect(() => {
         <h1 className="text-3xl font-bold text-gray-800 mb-2">Điểm danh đại biểu</h1>
         <p className="text-gray-600 mb-8">Quét mã QR trên thẻ đại biểu để điểm danh</p>
 
-        {/* Statistics */}
+        {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <Card className="text-center">
             <div className="text-2xl font-bold text-blue-600 mb-1">{total}</div>
@@ -253,7 +278,7 @@ useEffect(() => {
           </Card>
         </div>
 
-        {/* QR + Manual Checkin */}
+        {/* QR + Manual */}
         <div className="grid lg:grid-cols-2 gap-8">
           <Card>
             <h2 className="text-xl font-semibold mb-4 flex items-center">
@@ -276,13 +301,7 @@ useEffect(() => {
               ) : (
                 <div className="space-y-4">
                   <div className="relative">
-                    <video
-                      ref={videoRef}
-                      autoPlay
-                      playsInline
-                      muted
-                      className="w-full h-64 bg-black rounded-lg object-cover"
-                    />
+                    <video ref={videoRef} autoPlay playsInline muted className="w-full h-64 bg-black rounded-lg object-cover" />
                     <canvas ref={canvasRef} className="hidden" />
                     <div className="absolute inset-0 border-2 border-blue-500 rounded-lg pointer-events-none"></div>
                   </div>
@@ -294,13 +313,12 @@ useEffect(() => {
             </div>
           </Card>
 
-          {/* Manual Checkin */}
           <Card>
             <h2 className="text-xl font-semibold mb-4 flex items-center">
               <i className="ri-user-check-line text-green-500 mr-2"></i>Điểm danh thủ công
             </h2>
             <div className="space-y-3 max-h-80 overflow-y-auto">
-              {delegates.map(d => (
+              {delegates.map((d) => (
                 <div
                   key={d.id}
                   className={`flex items-center justify-between p-3 rounded-lg border ${
@@ -309,11 +327,13 @@ useEffect(() => {
                 >
                   <div className="flex-1">
                     <div className="font-medium text-gray-800">{d.fullName}</div>
-                    <div className="text-sm text-gray-600">{d.delegateCode} - {d.unit}</div>
+                    <div className="text-sm text-gray-600">
+                      {d.delegateCode} - {d.unit}
+                    </div>
                   </div>
                   {d.checkedIn ? (
                     <div className="flex items-center text-green-600">
-                      <i className="ri-check-line mr-1"></i>
+                      <i className="ri-check-line mr-1" />
                       <span className="text-sm">Đã điểm danh</span>
                     </div>
                   ) : (
@@ -327,7 +347,7 @@ useEffect(() => {
           </Card>
         </div>
 
-        {/* Success Modal */}
+        {/* Success modal */}
         {showSuccess && checkedInDelegate && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
             <Card className="w-full max-w-md text-center">
@@ -337,14 +357,29 @@ useEffect(() => {
               <h2 className="text-xl font-semibold text-gray-800 mb-2">Điểm danh thành công!</h2>
               <div className="bg-gray-50 rounded-lg p-4 mb-4 text-left">
                 <div className="space-y-2">
-                  <div><strong>Mã đại biểu:</strong> {checkedInDelegate.delegateCode}</div>
-                  <div><strong>Họ tên:</strong> {checkedInDelegate.fullName}</div>
-                  <div><strong>Chức vụ:</strong> {checkedInDelegate.position}</div>
-                  <div><strong>Đơn vị:</strong> {checkedInDelegate.unit}</div>
-                  <div><strong>Thời gian:</strong> {new Date().toLocaleString('vi-VN')}</div>
+                  <div>
+                    <strong>Mã đại biểu:</strong> {checkedInDelegate.delegateCode}
+                  </div>
+                  <div>
+                    <strong>Họ tên:</strong> {checkedInDelegate.fullName}
+                  </div>
+                  <div>
+                    <strong>Chức vụ:</strong> {checkedInDelegate.position}
+                  </div>
+                  <div>
+                    <strong>Đơn vị:</strong> {checkedInDelegate.unit}
+                  </div>
+                  <div>
+                    <strong>Thời gian:</strong>{' '}
+                    {checkedInDelegate.checkinTime
+                      ? new Date(checkedInDelegate.checkinTime).toLocaleString('vi-VN')
+                      : new Date().toLocaleString('vi-VN')}
+                  </div>
                 </div>
               </div>
-              <Button onClick={closeModal} className="w-full">Tiếp tục</Button>
+              <Button onClick={closeModal} className="w-full">
+                Tiếp tục
+              </Button>
             </Card>
           </div>
         )}

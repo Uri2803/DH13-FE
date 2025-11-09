@@ -19,10 +19,8 @@ const ManagePage: React.FC = () => {
 
   const getFilteredDelegates = () => {
     let filtered = delegates;
-
-    // Phân quyền: manager chỉ thấy đại biểu của khoa mình
-    if (user?.role === 'manager') {
-      filtered = filtered.filter(d => d.unit === user.unit);
+    if (user?.role === 'department') {
+      filtered = filtered.filter(d => d.unit === user.code);
     }
 
     // Lọc theo tìm kiếm
@@ -68,7 +66,7 @@ const ManagePage: React.FC = () => {
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-800 mb-2">
-            {user?.role === 'admin' ? 'Quản lý đại biểu' : `Quản lý đại biểu - ${user?.unit}`}
+            {user?.role === 'admin' ? 'Quản lý đại biểu' : `Quản lý đại biểu - ${user?.department?.name}`}
           </h1>
           <p className="text-gray-600">
             {user?.role === 'admin' 

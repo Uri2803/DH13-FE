@@ -1,47 +1,81 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+// src/providers/AuthProvider.tsx
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  ReactNode,
+} from 'react';
+import { getInfor, logoutApi } from '../services/auth';
 
-export interface User {
-  id: string;
-  username: string;
-  role: 'admin' | 'manager' | 'delegate' | 'student';
-  fullName: string;
-  unit?: string;
-  delegateCode?: string;
+
+export type Role = 'admin' | 'department' | 'delegate';
+
+export interface Department {
+  id: number;
+  code: string;
+  name: string;
+  createdAt?: string;
+  updatedAt?: string;
+  deletedAt?: string | null;
 }
 
+export interface User {
+  id: number;
+  code: string;       // ví dụ: "SV001"
+  email: string;
+  name: string;       // họ tên từ BE
+  role: Role;
+  mssv?: string | null;
+  ava?: string | null;
+  hasContactInfo?: boolean;
+  department?: Department;
+  createdAt?: string;
+  updatedAt?: string;
+  deletedAt?: string | null;
+}
+
+// ---- Context interface ----
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   loading: boolean;
+  // login chỉ nhận user đã có (FE không giữ token, token nằm trong cookie HttpOnly)
   login: (userData: User) => void;
-  logout: () => void;
+  // logout gọi BE để clear cookie, rồi xóa user trong context
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser]     = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // ✅ Load user từ localStorage khi app khởi động
   useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
-    setLoading(false);
+    (async () => {
+      try {
+        const me = await getInfor();
+        setUser(me);
+      } catch {
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
 
-  // ✅ Hàm đăng nhập
+
   const login = (userData: User) => {
     setUser(userData);
-    localStorage.setItem('user', JSON.stringify(userData));
   };
 
-  // ✅ Hàm đăng xuất
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('user');
+  const logout = async () => {
+    try {
+      await logoutApi(); 
+    } finally {
+      setUser(null);
+    }
   };
 
   const value: AuthContextType = {
@@ -56,9 +90,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 };
 
 export const useAuth = (): AuthContextType => {
-  const context = useContext(AuthContext);
-  if (!context) {
+  const ctx = useContext(AuthContext);
+  if (!ctx) {
     throw new Error('useAuth phải được dùng trong AuthProvider');
   }
-  return context;
+  return ctx;
 };

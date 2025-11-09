@@ -22,7 +22,7 @@ const DashboardPage: React.FC = () => {
           { title: 'Quản lý tài liệu', description: 'Bật/tắt tài liệu hệ thống', icon: 'ri-file-settings-line', link: '/manage', color: 'bg-purple-500' },
           { title: 'Quản lý đại biểu', description: 'Xem và quản lý thông tin đại biểu', icon: 'ri-team-line', link: '/manage', color: 'bg-orange-500' }
         ];
-      case 'manager':
+      case 'department':
         return [
           { title: 'Quản lý đại biểu', description: 'Quản lý đại biểu khoa của bạn', icon: 'ri-team-line', link: '/manage', color: 'bg-blue-500' },
           { title: 'Tài liệu', description: 'Xem tài liệu đại hội', icon: 'ri-file-text-line', link: '/documents', color: 'bg-green-500' },
@@ -54,13 +54,13 @@ const DashboardPage: React.FC = () => {
         <div className="mb-8">
           
           <h1 className="text-3xl font-bold text-gray-800 mb-2">
-            Chào mừng, {user.fullName}!
+            Chào mừng, {user.name}!
           </h1>
           <p className="text-gray-600">
             {user.role === 'admin' && 'Quản trị viên hệ thống'}
-            {user.role === 'manager' && `Quản lý khoa ${user.unit}`}
-            {user.role === 'delegate' && `Đại biểu ${user.delegateCode} - ${user.unit}`}
-            {user.role === 'student' && 'Sinh viên'}
+            {user.role === 'department' && `Quản lý khoa ${user.department?.name}`}
+            {user.role === 'delegate' && `Đại biểu ${user.code} - ${user.department?.name}`}
+
           </p>
         </div>
 
