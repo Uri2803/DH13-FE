@@ -2,6 +2,7 @@
 import { RouteObject } from 'react-router-dom';
 import { lazy } from 'react';
 
+
 // Lazy load components
 const HomePage = lazy(() => import('../features/home/page'));
 const LoginPage = lazy(() => import('../features/login/page'));
@@ -14,6 +15,7 @@ const StatisticsPage = lazy(() => import('../features/statistics/page'));
 const ManagePage = lazy(() => import('../features/manage/page'));
 const CongressUpdatesPage = lazy(() => import('../features/congress-updates/page'));
 const CongressInfoPage = lazy(() => import('../features/congress-info/page'));
+const CheckinDisplay = lazy(() => import ('../features/checkin/CheckinDisplay'))
 // const NotFoundPage = lazy(() => import('../pages/NotFound'));
 
 const routes: RouteObject[] = [
@@ -60,6 +62,10 @@ const routes: RouteObject[] = [
   {
     path: '/congress-info',
     element: <CongressInfoPage />
+  },
+   {
+    path: '/checkin-display',
+    element: <CheckinDisplay />
   },
 //   {
 //     path: '*',

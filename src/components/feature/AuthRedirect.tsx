@@ -1,3 +1,4 @@
+// src/components/auth/AuthRedirect.tsx
 import React, { useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
@@ -6,31 +7,48 @@ interface AuthRedirectProps {
   children: React.ReactNode;
 }
 
+// Các route cần đăng nhập mới xem
+const PROTECTED_PREFIXES = ['/dashboard', '/checkin', '/manage', '/statistics'];
+// Các route public (ví dụ màn hình hiển thị checkin đặt trước cửa)
+const PUBLIC_ROUTES = ['/', '/checkin-display']; // thêm đường dẫn public khác nếu có
+
+const isProtectedPath = (path: string) =>
+  PROTECTED_PREFIXES.some(p => path === p || path.startsWith(p + '/'));
+
 const AuthRedirect: React.FC<AuthRedirectProps> = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
-  console.log('Auth status:', { isAuthenticated, loading, path: location.pathname });
+    if (loading) return;
 
-  if (loading) return;
+    const path = location.pathname;
+    const search = location.search;
+    const hash = location.hash;
 
-  if (isAuthenticated && location.pathname === '/') {
-    console.log('➡ Redirect: / → /dashboard');
-    navigate('/dashboard', { replace: true });
-    return;
-  }
-
-  if (!isAuthenticated) {
-    const protectedRoutes = ['/dashboard', '/checkin', '/manage', '/statistics'];
-    if (protectedRoutes.includes(location.pathname)) {
-      console.log('➡ Redirect: not auth → /');
-      navigate('/', { replace: true });
+    // Nếu đã đăng nhập và đang ở trang chủ → đẩy sang dashboard
+    if (isAuthenticated && path === '/') {
+      // Hỗ trợ ?redirect=/path
+      const params = new URLSearchParams(search);
+      const redirect = params.get('redirect');
+      if (redirect) {
+        navigate(redirect, { replace: true });
+      } else {
+        navigate('/dashboard', { replace: true });
+      }
+      return;
     }
-  }
-}, [isAuthenticated, loading, location.pathname, navigate]);
 
+    // Nếu chưa đăng nhập và đang vào trang được bảo vệ → đưa về trang chủ + nhớ redirect
+    if (!isAuthenticated && isProtectedPath(path)) {
+      const redirectTo = encodeURIComponent(path + search + hash);
+      navigate(`/?redirect=${redirectTo}`, {
+        replace: true,
+        state: { from: location }, // để LoginPage đọc và quay lại
+      });
+    }
+  }, [isAuthenticated, loading, location.pathname, location.search, location.hash, navigate]);
 
   if (loading) {
     return (

@@ -5,44 +5,123 @@ import { Navigation } from '../../components/feature/Navigation';
 import { Card } from '../../components/base/Card';
 import { Button } from '../../components/base/Button';
 import { useAuth } from '../../hooks/useAuth';
-import { mockDelegates } from '../../mocks/delegates';
-import { checkinByQr, checkinManual } from '../../services/checkin';
 import { getSocket } from '../../utils/socket';
+import { checkinByQr, checkinManual } from '../../services/checkin';
+import { fetchDelegatesAll } from '../../services/delegates';
 
-type Delegate = typeof mockDelegates[number];
+type UIDelegate = {
+  id: number | string;
+  delegateCode: string;
+  fullName: string;
+  unit?: string;
+  position?: string;
+  gender?: 'Nam' | 'Nữ' | string;
+  partyMember?: boolean;
+  birthDate?: string;
+  phone?: string;
+  email?: string;
+  checkedIn: boolean;
+  checkinTime?: string | null;
+};
+
+const normalizeDelegate = (d: any): UIDelegate => {
+  const di = d.delegateInfo ?? d;
+  const user = d.user ?? d;
+  return {
+    id: di.id ?? d.id ?? user.id,
+    delegateCode: di.code ?? d.code ?? d.delegateCode,
+    fullName: user.name ?? d.name ?? d.fullName ?? '',
+    unit: user.department?.name ?? d.department?.name ?? d.unit,
+    position: di.position ?? d.position,
+    gender: di.gender ?? d.gender,
+    partyMember: di.isPartyMember ?? d.partyMember,
+    birthDate: di.dateOfBirth ?? d.birthDate,
+    phone: di.phone ?? d.phone,
+    email: di.email ?? d.email ?? user.email,
+    checkedIn: Boolean(di.checkedIn ?? d.checkedIn),
+    checkinTime: di.checkinTime ?? d.checkinTime ?? null,
+  };
+};
 
 const CheckinPage: React.FC = () => {
   const { user } = useAuth();
+
+  // Video/canvas
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // vòng lặp quét
+  // Flags & raf
   const scanningRef = useRef<boolean>(false);
+  const processingRef = useRef<boolean>(false);
   const rafRef = useRef<number | null>(null);
 
-  const [scanning, setScanning] = useState(false);
-  const [delegates, setDelegates] = useState<Delegate[]>(mockDelegates);
-  const [checkedInDelegate, setCheckedInDelegate] = useState<any>(null);
-  const [showSuccess, setShowSuccess] = useState(false);
+  // Timers (tách riêng)
+  const toastTimerRef = useRef<number | null>(null);
+  const resumeTimerRef = useRef<number | null>(null);
 
-  // chỉ admin mới vào trang này
+  // UI state
+  const [scanning, setScanning] = useState(false);
+  const [delegates, setDelegates] = useState<UIDelegate[]>([]);
+  const [checkedInDelegate, setCheckedInDelegate] = useState<UIDelegate | null>(null);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [loadingList, setLoadingList] = useState(true);
+  const [loadError, setLoadError] = useState<string>('');
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Guard role
   useEffect(() => {
-    if (user?.role !== 'admin') {
+    if (user && !['admin', 'department'].includes(user.role)) {
       window.history.back();
     }
   }, [user]);
 
-  // ======= CAMERA + SCAN LOOP =======
-  const startCamera = () => setScanning(true);
+  // Load delegates
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        setLoadingList(true);
+        setLoadError('');
+        const list = await fetchDelegatesAll();
+        const mapped = list.map(normalizeDelegate);
+        if (mounted) setDelegates(mapped);
+      } catch (e: any) {
+        if (mounted) setLoadError(e?.message || 'Không tải được danh sách đại biểu.');
+      } finally {
+        if (mounted) setLoadingList(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  // Realtime sync
+  useEffect(() => {
+    const s = getSocket();
+    const onUpdate = (evt: { delegateId: number | string; checkedIn: boolean; checkinTime?: string }) => {
+      setDelegates(prev =>
+        prev.map(x =>
+          String(x.id) === String(evt.delegateId)
+            ? { ...x, checkedIn: evt.checkedIn, checkinTime: evt.checkinTime }
+            : x
+        )
+      );
+    };
+    s.on('checkin.updated', onUpdate);
+    return () => { s.off('checkin.updated', onUpdate); };
+  }, []);
+
+  // Start/stop camera
+  const startCamera = () => {
+    if (scanning) return;
+    setScanning(true);
+  };
 
   useEffect(() => {
     if (!scanning) return;
 
     let stream: MediaStream | null = null;
-
-    const boot = async () => {
+    (async () => {
       try {
-        // mở camera (ưu tiên camera sau)
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: { ideal: 'environment' } },
@@ -62,70 +141,53 @@ const CheckinPage: React.FC = () => {
         video.muted = true;
 
         await new Promise<void>((res) => {
-          const onLoaded = () => {
-            video!.removeEventListener('loadedmetadata', onLoaded);
-            res();
-          };
+          const onLoaded = () => { video!.removeEventListener('loadedmetadata', onLoaded); res(); };
           video!.addEventListener('loadedmetadata', onLoaded);
         });
         await video.play();
 
         scanningRef.current = true;
+        processingRef.current = false;
         rafRef.current = requestAnimationFrame(tick);
       } catch (err) {
         console.error('Không thể mở camera:', err);
-        alert('Không thể mở camera. Chuyển sang chế độ demo.');
+        showToast('Không thể mở camera. Dùng nút Demo để thử nhanh.', 'error', 3000);
         setScanning(false);
-        handleDemoCheckin();
       }
-    };
+    })();
 
-    boot();
-
+    // cleanup
     return () => {
       scanningRef.current = false;
-      if (rafRef.current) {
-        cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
-      }
-      if (stream) {
-        stream.getTracks().forEach((t) => t.stop());
-        stream = null;
-      }
+      processingRef.current = false;
+      if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+      if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
       if (videoRef.current) videoRef.current.srcObject = null;
     };
   }, [scanning]);
 
   const stopCamera = () => {
     scanningRef.current = false;
-    if (rafRef.current) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    }
+    if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
     const stream = videoRef.current?.srcObject as MediaStream | null;
-    stream?.getTracks().forEach((t) => t.stop());
+    stream?.getTracks().forEach(t => t.stop());
     if (videoRef.current) videoRef.current.srcObject = null;
     setScanning(false);
   };
 
+  // Scan loop
   const tick = () => {
     if (!scanningRef.current) return;
+    const next = () => { rafRef.current = requestAnimationFrame(tick); };
+
+    if (processingRef.current) { next(); return; }
 
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas) {
-      rafRef.current = requestAnimationFrame(tick);
-      return;
-    }
-    if (video.readyState < 2) {
-      rafRef.current = requestAnimationFrame(tick);
-      return;
-    }
+    if (!video || !canvas || video.readyState < 2) { next(); return; }
+
     const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      rafRef.current = requestAnimationFrame(tick);
-      return;
-    }
+    if (!ctx) { next(); return; }
 
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
@@ -135,81 +197,103 @@ const CheckinPage: React.FC = () => {
     const code = jsQR(img.data, canvas.width, canvas.height);
 
     if (code?.data) {
-      handleQRCheckin(code.data.trim());
-      stopCamera();
+      if (!processingRef.current) {
+        processingRef.current = true;     // khóa decode cho request hiện tại
+        handleQRCheckin(code.data.trim());
+      }
+      next();
       return;
     }
-    rafRef.current = requestAnimationFrame(tick);
+
+    next();
   };
 
-  useEffect(() => () => stopCamera(), []);
+  // Global cleanup
+  useEffect(() => () => {
+    stopCamera();
+    if (toastTimerRef.current)  { clearTimeout(toastTimerRef.current);  toastTimerRef.current  = null; }
+    if (resumeTimerRef.current) { clearTimeout(resumeTimerRef.current); resumeTimerRef.current = null; }
+  }, []);
 
-  // ======= CHECKIN LOGIC =======
-  const speak = (text: string) => {
-    if ('speechSynthesis' in window) {
-      const ut = new SpeechSynthesisUtterance(text);
-      ut.lang = 'vi-VN';
-      speechSynthesis.speak(ut);
-    }
+  // Toast helper (chỉ lo toast)
+  const showToast = (message: string, type: 'success' | 'error' = 'error', ms = 3000) => {
+    setToast({ type, message });
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => setToast(null), ms);
   };
 
-  const finishLocalUpdate = (d: {
-    id: number | string;
-    code: string;
-    fullName: string;
-    unit?: string;
-    position?: string;
-    checkedIn: boolean;
-    checkinTime?: string;
-  }) => {
-    setCheckedInDelegate({
-      id: d.id,
-      fullName: d.fullName,
-      delegateCode: d.code,
-      unit: d.unit,
-      position: d.position,
-      checkedIn: d.checkedIn,
-      checkinTime: d.checkinTime,
-    });
-    setDelegates((prev) =>
-      prev.map((x) =>
-        String(x.id) === String(d.id) ? { ...x, checkedIn: true, checkinTime: d.checkinTime } : x
-      )
+  // const speak = (text: string) => {
+  //   if ('speechSynthesis' in window) {
+  //     const ut = new SpeechSynthesisUtterance(text);
+  //     ut.lang = 'vi-VN';
+  //     speechSynthesis.speak(ut);
+  //   }
+  //   if (navigator.vibrate) navigator.vibrate(60);
+  // };
+
+  const finishLocalUpdate = (d: any, autoResume = true) => {
+    const ui = normalizeDelegate(d);
+    setCheckedInDelegate(ui);
+    setDelegates(prev =>
+      prev.map(x => (String(x.id) === String(ui.id)
+        ? { ...x, checkedIn: true, checkinTime: ui.checkinTime || new Date().toISOString() }
+        : x))
     );
     setShowSuccess(true);
-    speak(`Điểm danh thành công. ${d.fullName}${d.unit ? `, ${d.unit}` : ''}`);
+    // speak(`Chào mừng đại biểu, ${ui.fullName}${ui.unit ? `, ${ui.unit}` : ''}`);
+
+    if (autoResume) {
+      if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
+      resumeTimerRef.current = window.setTimeout(() => {
+        closeModal(true);
+      }, 2500);
+    }
   };
 
   const handleQRCheckin = async (qrData: string) => {
+    let success = false;
     try {
-      const { data } = await checkinByQr(qrData);
-      if (data?.ok) {
-        finishLocalUpdate(data.delegate);
+      const data = await checkinByQr(qrData);
+      if (data?.ok && data.delegate) {
+        success = true;
+        finishLocalUpdate(data.delegate, true);
       } else {
-        alert('QR không hợp lệ.');
+        showToast(data?.message || 'QR không hợp lệ.', 'error', 3000);
       }
     } catch (e: any) {
       console.error(e);
-      alert(e?.response?.data?.message || 'Không thể điểm danh bằng QR');
+      showToast(e?.response?.data?.message || 'Không thể điểm danh bằng QR', 'error', 3000);
+    } finally {
+      if (!success) {
+        if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
+        resumeTimerRef.current = window.setTimeout(() => {
+          processingRef.current = false;
+          if (scanningRef.current && !rafRef.current) {
+            rafRef.current = requestAnimationFrame(tick);
+          }
+        }, 3000);
+      }
     }
   };
 
   const handleManualCheckin = async (id: string | number) => {
     try {
-      const { data } = await checkinManual(Number(id));
-      if (data?.ok) {
-        finishLocalUpdate(data.delegate);
+      const res = await checkinManual(Number(id)); 
+      const data = res.data
+      console.log(res)
+      if (data?.ok && data.delegate) {
+        finishLocalUpdate(data.delegate, false);
       }
     } catch (e: any) {
       console.error(e);
-      alert(e?.response?.data?.message || 'Không thể điểm danh thủ công');
+      showToast(e?.response?.data?.message || 'Không thể điểm danh thủ công', 'error', 3000);
     }
   };
 
   const handleDemoCheckin = () => {
-    const unChecked = delegates.find((d) => !d.checkedIn);
+    const unChecked = delegates.find(d => !d.checkedIn);
     if (unChecked) {
-      const updated = {
+      finishLocalUpdate({
         id: unChecked.id,
         code: unChecked.delegateCode,
         fullName: unChecked.fullName,
@@ -217,38 +301,27 @@ const CheckinPage: React.FC = () => {
         position: unChecked.position,
         checkedIn: true,
         checkinTime: new Date().toISOString(),
-      };
-      finishLocalUpdate(updated);
+      }, false);
+    } else {
+      showToast('Tất cả đã điểm danh.', 'success', 2000);
     }
   };
 
-  const closeModal = () => {
+  const closeModal = (resumeScan = false) => {
     setShowSuccess(false);
     setCheckedInDelegate(null);
+    if (resumeScan) {
+      processingRef.current = false;
+      if (scanningRef.current && !rafRef.current) {
+        rafRef.current = requestAnimationFrame(tick);
+      }
+    }
   };
-
-  // (tuỳ chọn) nghe realtime để nếu có máy khác điểm danh, danh sách trang này cũng đổi theo
-  useEffect(() => {
-    const s = getSocket();
-    const onUpdate = (evt: { delegateId: number | string; checkedIn: boolean; checkinTime?: string }) => {
-      setDelegates((prev) =>
-        prev.map((x) =>
-          String(x.id) === String(evt.delegateId)
-            ? { ...x, checkedIn: evt.checkedIn, checkinTime: evt.checkinTime }
-            : x
-        )
-      );
-    };
-    s.on('checkin.updated', onUpdate);
-    return () => {
-      s.off('checkin.updated', onUpdate);
-    };
-  }, []);
 
   // ======= UI =======
   const total = delegates.length;
-  const checked = delegates.filter((d) => d.checkedIn).length;
-  const rate = Math.round((checked / total) * 100);
+  const checked = delegates.filter(d => d.checkedIn).length;
+  const rate = Math.round((checked / Math.max(total, 1)) * 100);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -257,6 +330,16 @@ const CheckinPage: React.FC = () => {
       <div className="container mx-auto px-4 py-8">
         <h1 className="text-3xl font-bold text-gray-800 mb-2">Điểm danh đại biểu</h1>
         <p className="text-gray-600 mb-8">Quét mã QR trên thẻ đại biểu để điểm danh</p>
+
+        {loadingList ? (
+          <Card className="mb-6 text-center">
+            <i className="ri-loader-4-line animate-spin mr-2" /> Đang tải danh sách...
+          </Card>
+        ) : loadError ? (
+          <Card className="mb-6 text-red-700 bg-red-50 border border-red-200">
+            {loadError}
+          </Card>
+        ) : null}
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
@@ -269,7 +352,7 @@ const CheckinPage: React.FC = () => {
             <div className="text-sm text-gray-600">Đã điểm danh</div>
           </Card>
           <Card className="text-center">
-            <div className="text-2xl font-bold text-orange-600 mb-1">{total - checked}</div>
+            <div className="text-2xl font-bold text-orange-600 mb-1">{Math.max(total - checked, 0)}</div>
             <div className="text-sm text-gray-600">Chưa điểm danh</div>
           </Card>
           <Card className="text-center">
@@ -282,20 +365,20 @@ const CheckinPage: React.FC = () => {
         <div className="grid lg:grid-cols-2 gap-8">
           <Card>
             <h2 className="text-xl font-semibold mb-4 flex items-center">
-              <i className="ri-qr-scan-line text-blue-500 mr-2"></i>Quét mã QR
+              <i className="ri-qr-scan-line text-blue-500 mr-2" /> Quét mã QR
             </h2>
 
             <div className="text-center">
               {!scanning ? (
                 <div className="space-y-4">
                   <div className="w-48 h-48 bg-gray-100 rounded-lg flex items-center justify-center mx-auto">
-                    <i className="ri-qr-code-line text-6xl text-gray-400"></i>
+                    <i className="ri-qr-code-line text-6xl text-gray-400" />
                   </div>
                   <Button onClick={startCamera} className="w-full">
-                    <i className="ri-camera-line mr-2"></i>Bắt đầu quét QR
+                    <i className="ri-camera-line mr-2" /> Bắt đầu quét QR
                   </Button>
                   <Button onClick={handleDemoCheckin} variant="secondary" className="w-full">
-                    <i className="ri-play-line mr-2"></i>Demo điểm danh
+                    <i className="ri-play-line mr-2" /> Demo điểm danh
                   </Button>
                 </div>
               ) : (
@@ -306,7 +389,7 @@ const CheckinPage: React.FC = () => {
                     <div className="absolute inset-0 border-2 border-blue-500 rounded-lg pointer-events-none"></div>
                   </div>
                   <Button onClick={stopCamera} variant="danger" className="w-full">
-                    <i className="ri-stop-line mr-2"></i>Dừng quét
+                    <i className="ri-stop-line mr-2" /> Dừng quét
                   </Button>
                 </div>
               )}
@@ -315,10 +398,10 @@ const CheckinPage: React.FC = () => {
 
           <Card>
             <h2 className="text-xl font-semibold mb-4 flex items-center">
-              <i className="ri-user-check-line text-green-500 mr-2"></i>Điểm danh thủ công
+              <i className="ri-user-check-line text-green-500 mr-2" /> Điểm danh thủ công
             </h2>
             <div className="space-y-3 max-h-80 overflow-y-auto">
-              {delegates.map((d) => (
+              {delegates.map(d => (
                 <div
                   key={d.id}
                   className={`flex items-center justify-between p-3 rounded-lg border ${
@@ -328,7 +411,7 @@ const CheckinPage: React.FC = () => {
                   <div className="flex-1">
                     <div className="font-medium text-gray-800">{d.fullName}</div>
                     <div className="text-sm text-gray-600">
-                      {d.delegateCode} - {d.unit}
+                      {d.delegateCode} {d.unit ? `- ${d.unit}` : ''}
                     </div>
                   </div>
                   {d.checkedIn ? (
@@ -347,28 +430,20 @@ const CheckinPage: React.FC = () => {
           </Card>
         </div>
 
-        {/* Success modal */}
+        {/* Success modal (auto close) */}
         {showSuccess && checkedInDelegate && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
             <Card className="w-full max-w-md text-center">
               <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <i className="ri-check-line text-2xl text-green-600"></i>
+                <i className="ri-check-line text-2xl text-green-600" />
               </div>
               <h2 className="text-xl font-semibold text-gray-800 mb-2">Điểm danh thành công!</h2>
               <div className="bg-gray-50 rounded-lg p-4 mb-4 text-left">
                 <div className="space-y-2">
-                  <div>
-                    <strong>Mã đại biểu:</strong> {checkedInDelegate.delegateCode}
-                  </div>
-                  <div>
-                    <strong>Họ tên:</strong> {checkedInDelegate.fullName}
-                  </div>
-                  <div>
-                    <strong>Chức vụ:</strong> {checkedInDelegate.position}
-                  </div>
-                  <div>
-                    <strong>Đơn vị:</strong> {checkedInDelegate.unit}
-                  </div>
+                  <div><strong>Mã đại biểu:</strong> {checkedInDelegate.delegateCode}</div>
+                  <div><strong>Họ tên:</strong> {checkedInDelegate.fullName}</div>
+                  {checkedInDelegate.position && <div><strong>Chức vụ:</strong> {checkedInDelegate.position}</div>}
+                  {checkedInDelegate.unit && <div><strong>Đơn vị:</strong> {checkedInDelegate.unit}</div>}
                   <div>
                     <strong>Thời gian:</strong>{' '}
                     {checkedInDelegate.checkinTime
@@ -377,10 +452,19 @@ const CheckinPage: React.FC = () => {
                   </div>
                 </div>
               </div>
-              <Button onClick={closeModal} className="w-full">
-                Tiếp tục
-              </Button>
+              <Button onClick={() => closeModal(true)} className="w-full">Tiếp tục</Button>
             </Card>
+          </div>
+        )}
+
+        {/* Toast (auto hide) */}
+        {toast && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
+            <div className={`px-4 py-3 rounded-lg shadow border text-sm
+              ${toast.type === 'error' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700'}
+            `}>
+              {toast.message}
+            </div>
           </div>
         )}
       </div>

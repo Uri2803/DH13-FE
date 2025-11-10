@@ -4,26 +4,62 @@ import { Navigation } from '../../components/feature/Navigation';
 import { Card } from '../../components/base/Card';
 import { Button } from '../../components/base/Button';
 import { useAuth } from '../../hooks/useAuth';
-import { mockDelegates } from '../../mocks/delegates';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { getSocket } from '../../utils/socket';
+import { fetchDelegatesAll, fetchDelegatesByDepartment, DelegateRow } from '../../services/delegates';
 
 const StatisticsPage: React.FC = () => {
   const { user } = useAuth();
-  const [delegates, setDelegates] = useState(mockDelegates);
+  const [delegates, setDelegates] = useState<DelegateRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string>('');
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'all'>('today');
   const [conn, setConn] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
 
-  // Realtime: nhận "checkin.updated" => cập nhật danh sách
+  // ======= Load dữ liệu thật từ BE =======
   useEffect(() => {
-    const s = getSocket();
+    let alive = true;
+    (async () => {
+      try {
+        setLoading(true);
+        setErr('');
+        if (!user) {
+          setErr('Vui lòng đăng nhập');
+          return;
+        }
+
+        let rows: DelegateRow[] = [];
+        if (user.role === 'admin') {
+          rows = await fetchDelegatesAll();
+        } else if (user.role === 'department' && (user as any).department?.id) {
+          rows = await fetchDelegatesByDepartment((user as any).department.id);
+        } else if ((user as any).department?.id) {
+          // fallback: nếu vai trò khác nhưng vẫn muốn xem theo khoa của mình
+          rows = await fetchDelegatesByDepartment((user as any).department.id);
+        } else {
+          rows = []; // không có scope phù hợp
+        }
+
+        if (alive) setDelegates(rows);
+      } catch (e: any) {
+        if (alive) setErr(e?.message || 'Không tải được dữ liệu');
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [user]);
+
+  // ======= Realtime: checkin.updated (delegateId = delegate_info.id) =======
+  useEffect(() => {
+    const s = getSocket(); // đảm bảo s.auth.token = cookie Authentication (nếu BE yêu cầu)
     const onConnect = () => setConn('connected');
     const onDisconnect = () => setConn('disconnected');
-    const onUpdate = (evt: { delegateId: number | string; checkedIn: boolean; checkinTime?: string }) => {
+    const onUpdate = (evt: { delegateId: number | string; checkedIn: boolean; checkinTime?: string | null }) => {
       setDelegates((prev) =>
         prev.map((x) =>
           String(x.id) === String(evt.delegateId)
-            ? { ...x, checkedIn: evt.checkedIn, checkinTime: evt.checkinTime }
+            ? { ...x, checkedIn: evt.checkedIn, checkinTime: evt.checkinTime ?? null }
             : x
         )
       );
@@ -40,12 +76,8 @@ const StatisticsPage: React.FC = () => {
     };
   }, []);
 
-  // ========== Derive stats ==========
-  const checkedInDelegates = useMemo(
-    () => delegates.filter((d) => d.checkedIn),
-    [delegates]
-  );
-
+  // ======= Derive stats =======
+  const checkedInDelegates = useMemo(() => delegates.filter((d) => d.checkedIn), [delegates]);
   const totalDelegates = delegates.length;
   const attendanceRate = Math.round((checkedInDelegates.length / Math.max(totalDelegates, 1)) * 100);
 
@@ -68,24 +100,25 @@ const StatisticsPage: React.FC = () => {
   const facultyStats = useMemo(() => {
     const acc: any[] = [];
     for (const d of delegates) {
-      const key = d.unit;
-      let ex = acc.find((x) => x.name === (key?.replace?.('Khoa ', '') ?? key));
-      if (!ex) {
-        ex = { name: key?.replace?.('Khoa ', '') ?? key, total: 0, checkedIn: 0 };
-        acc.push(ex);
-      }
+      const key = d.unit || '';
+      const name = key.replace?.('Khoa ', '') ?? key;
+      let ex = acc.find((x) => x.name === name);
+      if (!ex) { ex = { name, total: 0, checkedIn: 0 }; acc.push(ex); }
       ex.total += 1;
       if (d.checkedIn) ex.checkedIn += 1;
     }
     return acc;
   }, [delegates]);
 
-  const getAge = (birthDate: string) => {
-    return new Date().getFullYear() - new Date(birthDate).getFullYear();
+  const getAge = (birthDate?: string) => {
+    if (!birthDate) return 0;
+    const dt = new Date(birthDate);
+    if (isNaN(dt.getTime())) return 0;
+    return new Date().getFullYear() - dt.getFullYear();
   };
 
   const oldestDelegate = useMemo(
-    () => delegates.reduce((oldest, current) => (getAge(current.birthDate) > getAge(oldest.birthDate) ? current : oldest), delegates[0]),
+    () => (delegates.length ? delegates.reduce((a, b) => (getAge(b.birthDate) > getAge(a.birthDate) ? b : a)) : undefined),
     [delegates]
   );
 
@@ -98,17 +131,39 @@ const StatisticsPage: React.FC = () => {
     ];
   }, [checkedInDelegates]);
 
+  // ======= UI =======
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Navigation />
+        <div className="container mx-auto px-4 py-12 text-center text-gray-600">
+          <i className="ri-loader-4-line animate-spin mr-2" />
+          Đang tải thống kê...
+        </div>
+      </div>
+    );
+  }
+
+  if (err) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Navigation />
+        <div className="container mx-auto px-4 py-12">
+          <div className="bg-red-50 text-red-700 border border-red-200 rounded-md p-4">{err}</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navigation />
-
       <div className="container mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-800 mb-2">Thống kê tham gia</h1>
             <p className="text-gray-600">
-              Báo cáo chi tiết về tình hình tham gia đại hội
-              {` · `}
+              Báo cáo chi tiết về tình hình tham gia đại hội ·{' '}
               <span className={conn === 'connected' ? 'text-green-600' : conn === 'connecting' ? 'text-yellow-600' : 'text-red-600'}>
                 {conn === 'connected' ? 'Realtime: đã kết nối' : conn === 'connecting' ? 'Realtime: đang kết nối...' : 'Realtime: ngắt kết nối'}
               </span>
@@ -124,7 +179,7 @@ const StatisticsPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Overview Stats */}
+        {/* Overview */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
           <Card className="text-center">
             <div className="text-2xl font-bold text-blue-600 mb-1">{totalDelegates}</div>
@@ -161,20 +216,16 @@ const StatisticsPage: React.FC = () => {
               <ResponsiveContainer width="60%" height={200}>
                 <PieChart>
                   <Pie data={genderStats} cx="50%" cy="50%" outerRadius={80} dataKey="value">
-                    {genderStats.map((entry, i) => (
-                      <Cell key={i} fill={entry.color} />
-                    ))}
+                    {genderStats.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                   </Pie>
                   <Tooltip />
                 </PieChart>
               </ResponsiveContainer>
               <div className="space-y-3">
-                {genderStats.map((stat, i) => (
+                {genderStats.map((st, i) => (
                   <div key={i} className="flex items-center">
-                    <div className="w-4 h-4 rounded-full mr-2" style={{ backgroundColor: stat.color }} />
-                    <span className="text-sm">
-                      {stat.name}: {stat.value} người
-                    </span>
+                    <div className="w-4 h-4 rounded-full mr-2" style={{ backgroundColor: st.color }} />
+                    <span className="text-sm">{st.name}: {st.value} người</span>
                   </div>
                 ))}
               </div>
@@ -191,20 +242,16 @@ const StatisticsPage: React.FC = () => {
               <ResponsiveContainer width="60%" height={200}>
                 <PieChart>
                   <Pie data={membershipStats} cx="50%" cy="50%" outerRadius={80} dataKey="value">
-                    {membershipStats.map((entry, i) => (
-                      <Cell key={i} fill={entry.color} />
-                    ))}
+                    {membershipStats.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                   </Pie>
                   <Tooltip />
                 </PieChart>
               </ResponsiveContainer>
               <div className="space-y-3">
-                {membershipStats.map((stat, i) => (
+                {membershipStats.map((st, i) => (
                   <div key={i} className="flex items-center">
-                    <div className="w-4 h-4 rounded-full mr-2" style={{ backgroundColor: stat.color }} />
-                    <span className="text-sm">
-                      {stat.name}: {stat.value} người
-                    </span>
+                    <div className="w-4 h-4 rounded-full mr-2" style={{ backgroundColor: st.color }} />
+                    <span className="text-sm">{st.name}: {st.value} người</span>
                   </div>
                 ))}
               </div>
@@ -238,18 +285,17 @@ const StatisticsPage: React.FC = () => {
             Phân bố theo độ tuổi
           </h3>
           <div className="grid grid-cols-3 gap-4">
-            {ageStats.map((stat, i) => (
+            {ageStats.map((st, i) => (
               <div key={i} className="text-center p-4 bg-gray-50 rounded-lg">
-                <div className="text-2xl font-bold text-purple-600 mb-1">{stat.value}</div>
-                <div className="text-sm text-gray-600">{stat.name}</div>
+                <div className="text-2xl font-bold text-purple-600 mb-1">{st.value}</div>
+                <div className="text-sm text-gray-600">{st.name}</div>
               </div>
             ))}
           </div>
           {oldestDelegate && (
             <div className="mt-4 p-3 bg-blue-50 rounded-lg">
               <div className="text-sm text-blue-800">
-                <strong>Đại biểu có tuổi cao nhất:</strong> {oldestDelegate.fullName} - {getAge(oldestDelegate.birthDate)} tuổi (
-                {oldestDelegate.unit})
+                <strong>Đại biểu có tuổi cao nhất:</strong> {oldestDelegate.fullName} - {getAge(oldestDelegate.birthDate)} tuổi ({oldestDelegate.unit})
               </div>
             </div>
           )}

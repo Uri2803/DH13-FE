@@ -1,5 +1,6 @@
+// src/pages/auth/LoginPage.tsx
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Card } from '../../components/base/Card';
 import { Button } from '../../components/base/Button';
 import { useAuth } from '../../hooks/useAuth';
@@ -12,20 +13,41 @@ const LoginPage: React.FC = () => {
   const [error, setError]         = useState('');
   const { login }                 = useAuth();
   const navigate                  = useNavigate();
+  const location                  = useLocation();
+
+  const safePath = (p?: string | null) =>
+    p && p.startsWith('/') && !p.startsWith('//') ? p : '/dashboard';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     setLoading(true);
     setError('');
 
     try {
+      // 1) gọi login -> BE set cookie httpOnly
       await loginApi(username, password);
-      const meRes = await getInfor();
-      const user  = (meRes as any)?.user ?? meRes; 
 
+      // 2) lấy thông tin user
+      const meRes = await getInfor();
+      const user  = (meRes as any)?.user ?? meRes;
       if (!user) throw new Error('Không lấy được thông tin người dùng.');
+
+      // 3) set vào context
       login(user);
-      navigate('/dashboard');
+
+      // 4) điều hướng: ưu tiên ?redirect=... hoặc state.from (được set khi bị chặn do chưa login)
+      const params = new URLSearchParams(location.search);
+      const qsRedirect = params.get('redirect');
+
+      const fromState = (location.state as any)?.from;
+      const fromPath =
+        fromState?.pathname
+          ? `${fromState.pathname}${fromState.search ?? ''}${fromState.hash ?? ''}`
+          : null;
+
+      const target = safePath(qsRedirect || fromPath);
+      navigate(target, { replace: true });
     } catch (err: any) {
       const msg =
         err?.response?.data?.message ||
