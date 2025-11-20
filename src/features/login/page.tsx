@@ -55,7 +55,7 @@ const LoginPage: React.FC = () => {
 
       {/* ẢNH NỀN */}
       <img
-        src="src/assets/image/nền đại hội.png"
+        src="src/assets/image/nendaihoi.png"
         alt="background"
         className="absolute inset-0 w-full h-full object-cover -z-20 select-none pointer-events-none"
       />
