@@ -2,6 +2,19 @@ import React, { useEffect, useRef, useState } from 'react';
 import { getSocket } from '../../utils/socket';
 import { fetchDelegatesAll, fetchDelegateById } from '../../services/delegates';
 
+// ✅ Helper đọc giọng fallback nếu cần
+const basicSpeak = (text: string) => {
+  try {
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'vi-VN';
+    u.rate = 1;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(u);
+  } catch (e) {
+    console.warn('TTS failed', e);
+  }
+};
+
 interface CheckinData {
   id: number | string;
   delegateCode: string;
@@ -10,9 +23,10 @@ interface CheckinData {
   position?: string;
   email?: string;
   phone?: string;
-  avatar?: string | null;
+  ava?: string | null;
   checkedIn?: boolean;
   checkinTime?: string | null;
+
 }
 
 const normalizeDelegate = (d: any): CheckinData => {
@@ -26,158 +40,152 @@ const normalizeDelegate = (d: any): CheckinData => {
     position: di.position ?? d.position,
     email: user.email ?? d.email,
     phone: di.phone ?? d.phone,
-    avatar: user.ava ?? d.ava ?? null,
+    ava: user.ava ?? d.ava ?? null,
     checkedIn: Boolean(di.checkedIn ?? d.checkedIn),
     checkinTime: (di.checkinTime ?? d.checkinTime) || null,
   };
 };
 
-const DUP_WINDOW_MS = 5000;   // chống trùng theo ID trong 5s
-const HIDE_AFTER_MS = 10000;  // 10s không có ai mới thì ẩn khung
+const DUP_WINDOW_MS = 5000;
+const HIDE_AFTER_MS = 10000;
 
 const CheckinDisplay: React.FC = () => {
   const [current, setCurrent] = useState<CheckinData | null>(null);
   const [connected, setConnected] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
-
-  // TTS & UI flags
   const [mute, setMute] = useState(false);
   const [ttsReady, setTtsReady] = useState(false);
-  const [isVisible, setIsVisible] = useState(false);
-
-  // danh sách gần đây (phòng cần hiển thị lại)
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [selectedVoiceId, setSelectedVoiceId] = useState<string>('auto');
   const [recentCheckins, setRecentCheckins] = useState<CheckinData[]>([]);
 
-  // ----- refs để tránh stale state trong handler -----
   const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
-  const muteRef = useRef<boolean>(mute);
-  const ttsReadyRef = useRef<boolean>(ttsReady);
+  const muteRef = useRef(mute);
+  const ttsReadyRef = useRef(ttsReady);
   const lastShownRef = useRef<{ id?: string; at: number }>({ id: undefined, at: 0 });
-  const recentCheckinsRef = useRef<CheckinData[]>([]);
   const hideTimerRef = useRef<number | null>(null);
   const pendingSpeechRef = useRef<string | null>(null);
 
   useEffect(() => { muteRef.current = mute; }, [mute]);
   useEffect(() => { ttsReadyRef.current = ttsReady; }, [ttsReady]);
-  useEffect(() => { recentCheckinsRef.current = recentCheckins; }, [recentCheckins]);
 
-  // ---------- TTS helpers ----------
   const ensureVoices = (): SpeechSynthesisVoice[] => {
     const v = window.speechSynthesis?.getVoices?.() || [];
-    if (v.length === 0) {
-      // gọi getVoices() lần nữa để kích nạp trên 1 số trình duyệt
-      window.speechSynthesis?.getVoices?.();
-    }
+    if (v.length === 0) window.speechSynthesis?.getVoices?.();
     return v;
   };
 
   const speak = (text: string) => {
     if (muteRef.current || !ttsReadyRef.current || !('speechSynthesis' in window)) return;
     try {
-      // nếu chưa có voice, pick lại
       if (!voiceRef.current) {
-        const voices = ensureVoices();
-        const vi = voices.find(v => /vi|Viet/i.test((v.lang || '') + (v.name || '')));
-        voiceRef.current = vi || voices[0] || null;
+        const list = ensureVoices();
+        const vi = list.find(v => /vi|Viet/i.test((v.lang || '') + (v.name || '')));
+        voiceRef.current = vi || list[0] || null;
       }
-
       const u = new SpeechSynthesisUtterance(text);
       if (voiceRef.current) u.voice = voiceRef.current;
       u.lang = voiceRef.current?.lang || 'vi-VN';
-      u.rate = 1; u.pitch = 1; u.volume = 1;
-
-      // iOS hacks
-      try { window.speechSynthesis.cancel(); } catch {}
-      try { window.speechSynthesis.pause(); window.speechSynthesis.resume(); } catch {}
-
-      u.onerror = (e) => console.warn('TTS error:', e);
+      u.rate = 1;
+      u.pitch = 1;
+      u.volume = 1;
+      window.speechSynthesis.cancel();
+      u.onerror = e => console.warn('TTS error:', e);
       window.speechSynthesis.speak(u);
       if (navigator.vibrate) navigator.vibrate(40);
     } catch (e) {
-      console.warn('TTS speak() exception:', e);
+      console.warn('TTS speak exception:', e);
     }
   };
 
   const enableAudio = () => {
-    if (!('speechSynthesis' in window)) { setTtsReady(true); return; }
-
-    const voices = ensureVoices();
-    const vi = voices.find(v => /vi|Viet/i.test((v.lang || '') + (v.name || '')));
-    voiceRef.current = vi || voices[0] || null;
+    if (!('speechSynthesis' in window)) {
+      setTtsReady(true);
+      return;
+    }
+    const list = ensureVoices();
+    setVoices(list);
+    const vi = list.find(v => /vi|Viet/i.test((v.lang || '') + (v.name || '')));
+    voiceRef.current = vi || list[0] || null;
 
     const u = new SpeechSynthesisUtterance('Âm thanh đã được bật');
     if (voiceRef.current) u.voice = voiceRef.current;
     u.lang = voiceRef.current?.lang || 'vi-VN';
     u.rate = 1;
-
-    // Bật cờ ngay khi bắt đầu (phòng khi onend không fire trên iOS)
     u.onstart = () => {
       setTtsReady(true);
-      // nếu có câu pending thì đọc luôn
       if (pendingSpeechRef.current) {
         const text = pendingSpeechRef.current;
         pendingSpeechRef.current = null;
         speak(text);
       }
     };
-
-    // Fallback: sau 1200ms vẫn coi như ready
     const fallback = window.setTimeout(() => setTtsReady(true), 1200);
-    u.onend = () => { try { window.clearTimeout(fallback); } catch {} };
-
-    try { window.speechSynthesis.cancel(); } catch {}
-    try { window.speechSynthesis.resume(); } catch {}
-    try { window.speechSynthesis.speak(u); }
-    catch { setTtsReady(true); }
+    u.onend = () => { window.clearTimeout(fallback); };
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(u);
   };
 
-  // nạp voice (và update khi voiceschanged)
+  // 🟡 Lấy danh sách voice + cho phép chọn giọng
   useEffect(() => {
     const pickVoice = () => {
-      const voices = ensureVoices();
-      if (!voices.length) return;
-      const vi = voices.find(v => /vi|Viet/i.test((v.lang || '') + (v.name || '')));
-      voiceRef.current = vi || voices[0] || null;
-    };
-    pickVoice();
-    window.speechSynthesis?.addEventListener?.('voiceschanged', pickVoice);
-    return () => window.speechSynthesis?.removeEventListener?.('voiceschanged', pickVoice);
-  }, []);
+      if (!('speechSynthesis' in window)) return;
+      const list = ensureVoices();
+      if (!list.length) return;
 
-  // auto-unlock khi người dùng chạm lần đầu (nếu quên bấm nút)
+      setVoices(list);
+
+      let chosen: SpeechSynthesisVoice | null = null;
+
+      if (selectedVoiceId !== 'auto') {
+        chosen = list.find(v => v.voiceURI === selectedVoiceId) || null;
+      }
+
+      if (!chosen) {
+        const vi = list.find(v => /vi|Viet/i.test((v.lang || '') + (v.name || '')));
+        chosen = vi || list[0] || null;
+      }
+
+      voiceRef.current = chosen;
+    };
+
+    pickVoice();
+    window.speechSynthesis.addEventListener('voiceschanged', pickVoice);
+    return () => {
+      window.speechSynthesis.removeEventListener('voiceschanged', pickVoice);
+    };
+  }, [selectedVoiceId]);
+
+  // yêu cầu user tương tác lần đầu để bật âm thanh
   useEffect(() => {
     const once = () => { if (!ttsReadyRef.current) enableAudio(); };
     window.addEventListener('pointerdown', once, { once: true });
     return () => window.removeEventListener('pointerdown', once);
   }, []);
 
-  // keep-alive: iOS có thể "ngủ" TTS sau thời gian rảnh
+  // anti-suspend cho SpeechSynthesis
   useEffect(() => {
-    if (!('speechSynthesis' in window)) return;
     const id = window.setInterval(() => {
       try { window.speechSynthesis.resume(); } catch {}
     }, 3000);
     return () => window.clearInterval(id);
   }, []);
 
-  // Ẩn khung sau HIDE_AFTER_MS không có ai mới
   const scheduleHide = () => {
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-    hideTimerRef.current = window.setTimeout(() => {
-      setCurrent(null);
-    }, HIDE_AFTER_MS);
+    hideTimerRef.current = window.setTimeout(() => setCurrent(null), HIDE_AFTER_MS);
   };
 
-  // ---------- Tải danh sách đã check-in gần nhất ----------
+  // 🟢 Fetch danh sách ban đầu
   useEffect(() => {
-    setIsVisible(true);
     (async () => {
       try {
         const all = await fetchDelegatesAll();
         const list = (all || [])
           .map(normalizeDelegate)
           .filter(x => x.checkedIn && x.checkinTime)
-          .sort((a, b) => new Date(b.checkinTime || 0).getTime() - new Date(a.checkinTime || 0).getTime());
-
+          .sort((a, b) =>
+            new Date(b.checkinTime || 0).getTime() - new Date(a.checkinTime || 0).getTime()
+          );
         setRecentCheckins(list);
         if (list.length > 0) {
           setCurrent(list[0]);
@@ -185,255 +193,169 @@ const CheckinDisplay: React.FC = () => {
           scheduleHide();
         }
       } catch (e) {
-        console.error('Không tải được danh sách đã điểm danh.', e);
+        console.error('Không tải được danh sách.', e);
       }
     })();
-
-    return () => {
-      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-      try { window.speechSynthesis?.cancel(); } catch {}
-    };
+    return () => { if (hideTimerRef.current) clearTimeout(hideTimerRef.current); };
   }, []);
 
-  // ---------- Socket: đăng ký 1 lần ----------
+  // 🟢 Socket: checkin.updated
   useEffect(() => {
     const s = getSocket();
-
-    // đặt trạng thái ngay lập tức
     setConnected(s.connected ? 'connected' : 'connecting');
-
     const onConnect = () => setConnected('connected');
     const onDisconnect = () => setConnected('disconnected');
-    const onConnectError = () => setConnected('disconnected');
-    const onReconnectAttempt = () => setConnected('connecting');
-    const onReconnect = () => setConnected('connected');
 
     const onUpdate = async (evt: { delegateId: number; checkedIn: boolean; checkinTime?: string }) => {
-      if (!evt?.checkedIn) return;
-
-      // chống trùng theo ID trong 5s
+      if (!evt.checkedIn) return;
       const now = Date.now();
-      if (lastShownRef.current.id === String(evt.delegateId) && (now - lastShownRef.current.at) < DUP_WINDOW_MS) {
-        return;
-      }
-
+      if (lastShownRef.current.id === String(evt.delegateId)
+        && (now - lastShownRef.current.at) < DUP_WINDOW_MS) return;
       try {
         let raw: any = null;
-        try {
-          raw = await fetchDelegateById(evt.delegateId);
-        } catch {
-          // fallback
-        }
-
-        const fallbackFromList = !raw ? recentCheckinsRef.current.find(x => String(x.id) === String(evt.delegateId)) : null;
-        const d = normalizeDelegate(raw?.item ?? raw ?? fallbackFromList ?? { id: evt.delegateId });
+        try { raw = await fetchDelegateById(evt.delegateId); } catch {}
+        const d = normalizeDelegate(raw?.item ?? raw ?? { id: evt.delegateId });
         d.checkinTime = d.checkinTime || evt.checkinTime || new Date().toISOString();
-
         setCurrent(d);
         lastShownRef.current = { id: String(d.id), at: Date.now() };
-        setRecentCheckins(prev => {
-          const filtered = prev.filter(x => String(x.id) !== String(d.id));
-          return [d, ...filtered];
-        });
-
-        // Lập lại timer ẩn khung
+        setRecentCheckins(prev => [d, ...prev.filter(x => String(x.id) !== String(d.id))]);
         scheduleHide();
-
-        // TTS: nếu chưa sẵn sàng, lưu pending để đọc sau khi enable
         const sentence = d.fullName
           ? `Chào mừng đại biểu ${d.fullName}${d.unit ? `, ${d.unit}` : ''}`
-          : `Điểm danh thành công.`;
-
-        if (!ttsReadyRef.current) {
-          pendingSpeechRef.current = sentence;
-        } else {
-          speak(sentence);
-        }
+          : 'Điểm danh thành công.';
+        if (!ttsReadyRef.current) pendingSpeechRef.current = sentence;
+        else speak(sentence);
       } catch (e) {
-        console.error('Sự cố xử lý checkin.updated', e);
+        console.error('Lỗi xử lý socket', e);
       }
     };
 
     s.on('connect', onConnect);
     s.on('disconnect', onDisconnect);
-    s.on('connect_error', onConnectError);
-    s.on('reconnect_attempt', onReconnectAttempt as any);
-    s.on('reconnect', onReconnect as any);
     s.on('checkin.updated', onUpdate);
-
     return () => {
       s.off('connect', onConnect);
       s.off('disconnect', onDisconnect);
-      s.off('connect_error', onConnectError);
-      s.off('reconnect_attempt', onReconnectAttempt as any);
-      s.off('reconnect', onReconnect as any);
       s.off('checkin.updated', onUpdate);
     };
-  }, []); // Đăng ký đúng 1 lần
+  }, []);
 
   const enterFullscreen = () => {
     const el: any = document.documentElement;
     if (el.requestFullscreen) el.requestFullscreen();
     else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
-    else if (el.msRequestFullscreen) el.msRequestFullscreen();
   };
 
+  const viVoices = voices.filter(v => /vi|Viet/i.test((v.lang || '') + (v.name || '')));
+  const displayVoices = viVoices.length ? viVoices : voices;
+
   return (
-    <div className="min-h-screen w-full bg-gradient-to-br from-cyan-50 via-white to-cyan-100 relative overflow-hidden">
-      {/* nền */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-20 left-20 w-64 h-64 opacity-5">
-          <div className="absolute inset-0 border-4 border-cyan-400 rounded-full"></div>
-          <div className="absolute inset-8 border-3 border-cyan-500 rounded-full"></div>
-          <div className="absolute inset-16 border-2 border-cyan-600 rounded-full"></div>
-        </div>
-        <div className="absolute bottom-20 right-20 w-48 h-48 opacity-5">
-          <div className="absolute inset-0 border-3 border-cyan-400 rounded-full"></div>
-          <div className="absolute inset-6 border-2 border-cyan-500 rounded-full"></div>
-          <div className="absolute inset-12 border border-cyan-600 rounded-full"></div>
-        </div>
-        <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-cyan-400/5 via-transparent to-cyan-600/5"></div>
-      </div>
+    <div className="relative min-h-screen w-full overflow-hidden">
+      <img src="src/assets/image/WEB DISPLAY.png" alt="" className="absolute inset-0 w-full h-full object-cover" />
+      <div className="absolute inset-0 bg-black/10 pointer-events-none" />
 
-      {/* Header điều khiển */}
-      <div className="relative z-10 px-6 py-4 flex items-center justify-between gap-3 flex-wrap bg-white/80 backdrop-blur-sm border-b border-cyan-200/50">
-        <div className="text-xl font-bold text-gray-800 flex items-center gap-3">
-          <span className={`inline-flex h-3 w-3 rounded-full ${connected === 'connected' ? 'bg-emerald-500' : connected === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'} animate-pulse`} />
-          <i className="ri-live-line text-cyan-600"></i>
+      {/* Header */}
+      <div className="relative  px-6 py-4 flex items-center justify-between  border-white/20 text-white">
+        <div className="flex items-center gap-3 text-xl font-semibold">
+          <span
+            className={`h-3 w-3 rounded-full ${
+              connected === 'connected'
+                ? 'bg-emerald-400'
+                : connected === 'connecting'
+                ? 'bg-yellow-300'
+                : 'bg-red-400'
+            } animate-pulse`}
+          />
           <span>Check-in Display</span>
-          <div className="text-sm text-gray-500 font-normal">
-            Realtime:{' '}
-            <span className={connected === 'connected' ? 'text-green-600' : connected === 'connecting' ? 'text-yellow-600' : 'text-red-600'}>
-              {connected === 'connected' ? 'Đã kết nối' : connected === 'connecting' ? 'Đang kết nối…' : 'Mất kết nối'}
-            </span>
-          </div>
+          <span className="text-sm opacity-90">
+            {connected === 'connected'
+              ? 'Đã kết nối'
+              : connected === 'connecting'
+              ? 'Đang kết nối…'
+              : 'Mất kết nối'}
+          </span>
         </div>
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Chọn giọng nói */}
+          {displayVoices.length > 0 && (
+            <select
+              value={selectedVoiceId}
+              onChange={(e) => setSelectedVoiceId(e.target.value)}
+              className="px-3 py-2 rounded-xl bg-white/90 text-gray-800 text-sm border border-white/40"
+            >
+              <option value="auto">Giọng tự động</option>
+              {displayVoices.map(v => (
+                <option key={v.voiceURI} value={v.voiceURI}>
+                  {v.name} ({v.lang})
+                </option>
+              ))}
+            </select>
+          )}
 
-        <div className="flex items-center gap-3">
           {!ttsReady && (
             <button
               onClick={enableAudio}
-              className="group px-4 py-2 rounded-xl border text-sm bg-gradient-to-r from-emerald-500 to-emerald-600 text-white hover:from-emerald-600 hover:to-emerald-700 shadow-lg hover:shadow-xl transition-all duration-300 whitespace-nowrap cursor-pointer transform hover:-translate-y-1"
-              title="Bật âm thanh (nhấn 1 lần)"
+              className="px-4 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 transition"
             >
-              <i className="ri-volume-up-line mr-2 group-hover:scale-110 transition-transform"></i>
               Bật âm thanh
             </button>
           )}
 
           <button
             onClick={() => setMute(m => !m)}
-            className="group px-4 py-2 rounded-xl border text-sm bg-white/90 hover:bg-white text-gray-700 hover:text-gray-800 shadow-lg hover:shadow-xl transition-all duration-300 whitespace-nowrap cursor-pointer transform hover:-translate-y-1"
-            title={mute ? 'Bật tiếng' : 'Tắt tiếng'}
+            className="px-4 py-2 rounded-xl bg-white/90 text-gray-800 hover:bg-white transition"
           >
-            {mute ? (
-              <i className="ri-volume-mute-line mr-2 group-hover:scale-110 transition-transform" />
-            ) : (
-              <i className="ri-volume-up-line mr-2 group-hover:scale-110 transition-transform" />
-            )}
-            {mute ? 'Đang tắt' : 'Đang bật'}
+            {mute ? 'Tắt tiếng' : 'Đang bật tiếng'}
           </button>
 
           <button
             onClick={enterFullscreen}
-            className="group px-4 py-2 rounded-xl border text-sm bg-white/90 hover:bg-white text-gray-700 hover:text-gray-800 shadow-lg hover:shadow-xl transition-all duration-300 whitespace-nowrap cursor-pointer transform hover:-translate-y-1"
-            title="Toàn màn hình"
+            className="px-4 py-2 rounded-xl bg-white/90 text-gray-800 hover:bg-white transition"
           >
-            <i className="ri-fullscreen-line mr-2 group-hover:scale-110 transition-transform"></i>
             Toàn màn hình
           </button>
         </div>
       </div>
 
-      {/* Body */}
-      <div className="relative z-10 px-6 pb-10 pt-6">
-        {!current ? (
-         
-          null
-        ) : (
-          <div className="mx-auto max-w-5xl">
-            <div className={`relative overflow-hidden rounded-3xl md:rounded-[2rem] bg-white/95 backdrop-blur-sm shadow-2xl border border-cyan-200/50 transform transition-all duration-1000 ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
-              <div className="absolute inset-0 opacity-90 pointer-events-none">
-                <div className="absolute inset-0 bg-gradient-to-br from-cyan-400/5 via-emerald-400/5 to-cyan-600/5"></div>
+      {/* Nội dung hiển thị */}
+      <div className="relative z-10 px-4 py-20">
+        {current && (
+          <div className="max-w-4xl mx-auto bg-white/95 rounded-3xl shadow-xl p-10 text-center">
+            {current.ava ? (
+              <div className="w-40 h-40 mx-auto mb-6 rounded-full overflow-hidden border-4 border-cyan-500 shadow-lg bg-gray-100">
+                <img
+                  src={current.ava}
+                              alt={current.fullName}
+                  className="w-full h-full object-cover"
+                />
               </div>
-
-              <div className="relative p-6 md:p-12">
-                <div className="flex items-center justify-between gap-3 flex-wrap mb-8">
-                  <div className="inline-flex items-center gap-3 rounded-full bg-gradient-to-r from-emerald-100 to-emerald-50 text-emerald-700 px-6 py-3 text-lg font-semibold shadow-lg">
-                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-200 animate-pulse">
-                      <i className="ri-check-line text-emerald-700 text-sm" />
-                    </span>
-                    Điểm danh thành công
-                  </div>
-                  <div className="text-lg text-gray-600 bg-white/80 px-4 py-2 rounded-xl shadow-md">
-                    <i className="ri-time-line mr-2 text-cyan-600"></i>
-                    {current.checkinTime
-                      ? new Date(current.checkinTime).toLocaleString('vi-VN')
-                      : new Date().toLocaleString('vi-VN')}
-                  </div>
-                </div>
-
-                <div className="flex flex-col items-center gap-6">
-                  <div className="shrink-0 relative">
-                    <div className="absolute -inset-2 rounded-full bg-gradient-to-br from-cyan-400/40 via-emerald-400/30 to-cyan-600/40 blur-2xl animate-pulse"></div>
-                    {current.avatar ? (
-                      <img
-                        src={current.avatar}
-                        alt={current.fullName}
-                        className="relative w-56 h-56 md:w-72 md:h-72 rounded-full object-cover border-4 border-white shadow-2xl"
-                      />
-                    ) : (
-                      <div className="relative w-56 h-56 md:w-72 md:h-72 rounded-full bg-white border-4 border-white shadow-2xl flex items-center justify-center p-8 overflow-hidden">
-                        <img
-                          src="src/assets/image/BieuTrung.png"
-                          alt="Logo Đại hội"
-                          className="object-contain w-full h-full"
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex-1 w-full text-center">
-                    <h2 className="text-3xl font-semibold text-gray-700 mb-4">CHÀO MỪNG</h2>
-                    <div className="text-5xl md:text-6xl font-extrabold mb-4 leading-tight">
-                      <span className="bg-clip-text text-transparent bg-gradient-to-r from-cyan-600 via-cyan-700 to-cyan-800">
-                        {current.fullName}
-                      </span>
-                    </div>
-
-                    <div className="flex flex-col items-center gap-4 text-gray-700 mb-8">
-                      {current.position && (
-                        <div className="flex items-center justify-center gap-3 text-2xl font-semibold text-emerald-700">
-                          <i className="ri-vip-crown-line" />
-                          <span>{current.position}</span>
-                        </div>
-                      )}
-                      {current.unit && (
-                        <div className="flex items-center justify-center gap-3 text-xl font-medium text-purple-700">
-                          <i className="ri-building-line" />
-                          <span>{current.unit}</span>
-                        </div>
-                      )}
-                      <div className="flex items-center justify-center gap-3 bg-gray-100 rounded-lg px-4 py-2 text-lg">
-                        <i className="ri-id-card-line text-cyan-700" />
-                        <span className="text-sm text-gray-500">Mã đại biểu:</span>
-                        <b className="text-gray-800">{current.delegateCode}</b>
-                      </div>
-                    </div>
-
-                    <div className="bg-gradient-to-r from-emerald-50 to-cyan-50 border-2 border-emerald-200 rounded-2xl p-6 shadow-lg max-w-2xl mx-auto">
-                      <div className="flex items-center justify-center gap-3 mb-3">
-                        <i className="ri-checkbox-circle-fill text-3xl text-emerald-600"></i>
-                        <span className="text-2xl font-bold text-emerald-700">Chào mừng tham dự Đại hội!</span>
-                      </div>
-                      <p className="text-lg text-gray-700">
-                        Chúc đồng chí có một kỳ Đại hội thành công tốt đẹp!
-                      </p>
-                    </div>
-                  </div>
-                </div>
+            ) : (
+              <div className="w-32 h-32 mx-auto mb-6 rounded-full bg-cyan-100 flex items-center justify-center text-5xl font-bold text-cyan-700 shadow-lg">
+                {current.fullName?.charAt(0).toUpperCase() || '?'}
               </div>
-            </div>            
+            )}
+
+            <h2 className="text-3xl font-semibold text-gray-700 mb-2">CHÀO MỪNG</h2>
+            <div className="text-5xl font-extrabold text-cyan-700 mb-3">
+              {current.fullName}
+            </div>
+
+            {current.unit && (
+              <div className="text-xl text-gray-600 mb-1">Đoàn đại biểu <b>{current.unit}</b></div>
+            )}
+
+            {current.position && (
+              <div className="text-base text-gray-500 mb-2">{current.position}</div>
+            )}
+
+            <div className="text-sm text-gray-500 mb-4">
+              Mã đại biểu: <b>{current.delegateCode}</b>
+            </div>
+
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-50 text-emerald-700 text-lg font-semibold">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
+              <span>Điểm danh thành công!</span>
+            </div>
           </div>
         )}
       </div>

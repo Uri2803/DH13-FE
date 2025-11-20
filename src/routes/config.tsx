@@ -16,6 +16,8 @@ const ManagePage = lazy(() => import('../features/manage/page'));
 const CongressUpdatesPage = lazy(() => import('../features/congress-updates/page'));
 const CongressInfoPage = lazy(() => import('../features/congress-info/page'));
 const CheckinDisplay = lazy(() => import ('../features/checkin/CheckinDisplay'))
+const HeroImagesPage = lazy(()=> import ('../features/hero-image/HeroImagesPage'))
+const AdminWishesPage = lazy(()=> import('../features/wishes/AdminWishesPage'))
 // const NotFoundPage = lazy(() => import('../pages/NotFound'));
 
 const routes: RouteObject[] = [
@@ -66,6 +68,13 @@ const routes: RouteObject[] = [
    {
     path: '/checkin-display',
     element: <CheckinDisplay />
+  },{
+    path: '/hero-images',
+    element: <HeroImagesPage />
+  },
+  {
+    path: '/admin/wishes',
+    element: <AdminWishesPage />
   },
 //   {
 //     path: '*',

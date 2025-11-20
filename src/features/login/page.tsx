@@ -1,70 +1,70 @@
-// src/pages/auth/LoginPage.tsx
-import React, { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { Card } from '../../components/base/Card';
-import { Button } from '../../components/base/Button';
-import { useAuth } from '../../hooks/useAuth';
-import { loginApi, getInfor } from '../../services/auth';
+import React, { useState } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import { Card } from "../../components/base/Card";
+import { Button } from "../../components/base/Button";
+import { useAuth } from "../../hooks/useAuth";
+import { loginApi, getInfor } from "../../services/auth";
 
 const LoginPage: React.FC = () => {
-  const [username, setUsername]   = useState('');
-  const [password, setPassword]   = useState('');
-  const [loading, setLoading]     = useState(false);
-  const [error, setError]         = useState('');
-  const { login }                 = useAuth();
-  const navigate                  = useNavigate();
-  const location                  = useLocation();
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const { login } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const safePath = (p?: string | null) =>
-    p && p.startsWith('/') && !p.startsWith('//') ? p : '/dashboard';
+    p && p.startsWith("/") && !p.startsWith("//") ? p : "/dashboard";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
+
     setLoading(true);
-    setError('');
+    setError("");
 
     try {
-      // 1) gọi login -> BE set cookie httpOnly
       await loginApi(username, password);
-
-      // 2) lấy thông tin user
       const meRes = await getInfor();
-      const user  = (meRes as any)?.user ?? meRes;
-      if (!user) throw new Error('Không lấy được thông tin người dùng.');
+      const user = (meRes as any)?.user ?? meRes;
 
-      // 3) set vào context
+      if (!user) throw new Error("Không lấy được thông tin người dùng.");
       login(user);
 
-      // 4) điều hướng: ưu tiên ?redirect=... hoặc state.from (được set khi bị chặn do chưa login)
       const params = new URLSearchParams(location.search);
-      const qsRedirect = params.get('redirect');
+      const qsRedirect = params.get("redirect");
 
       const fromState = (location.state as any)?.from;
-      const fromPath =
-        fromState?.pathname
-          ? `${fromState.pathname}${fromState.search ?? ''}${fromState.hash ?? ''}`
-          : null;
+      const fromPath = fromState?.pathname
+        ? `${fromState.pathname}${fromState.search ?? ""}${fromState.hash ?? ""}`
+        : null;
 
       const target = safePath(qsRedirect || fromPath);
       navigate(target, { replace: true });
-    } catch (err: any) {
-      const msg =
-        err?.response?.data?.message ||
-        err?.message ||
-        'Tên đăng nhập hoặc mật khẩu không đúng';
-      setError(Array.isArray(msg) ? msg[0] : msg);
+    } catch (err) {
+      setError("Tên đăng nhập hoặc mật khẩu không đúng");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div
-      className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4 bg-cover bg-center"
-      style={{ backgroundImage: "url('/bg.png')" }}
-    >
-      <div className="w-full max-w-md">
+    <div className="relative min-h-screen flex items-center justify-center p-4 overflow-hidden">
+
+      {/* ẢNH NỀN */}
+      <img
+        src="/src/assets/image/nedh.png"
+        alt="background"
+        className="absolute inset-0 w-full h-full object-cover -z-20 select-none pointer-events-none"
+      />
+
+      {/* OVERLAY MỜ (nếu muốn nhẹ nhàng) */}
+      <div className="absolute inset-0 bg-white/50 backdrop-blur-sm -z-10"></div>
+
+      {/* FORM */}
+      <div className="w-full max-w-md relative z-10">
         <div className="text-center mb-8">
           <div className="w-17 h-17 rounded-full flex items-center justify-center mx-auto mb-4">
             <img
@@ -73,22 +73,29 @@ const LoginPage: React.FC = () => {
               className="w-16 h-16 object-cover rounded-full"
             />
           </div>
-          <h1 className="text-2xl font-bold text-gray-800 mb-2">Đăng nhập hệ thống</h1>
-          <p className="text-gray-600">Đại hội Hội sinh viên ĐHQG-HCM</p>
+
+          <h1 className="text-2xl font-bold text-gray-800 mb-2">
+            Đăng nhập hệ thống
+          </h1>
+
+          <p className="text-gray-600">
+            Đại hội Hội Sinh viên<br />
+            <strong>Trường Đại học Khoa học Tự nhiên – ĐHQG-HCM</strong>
+          </p>
         </div>
 
         <Card>
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Tên đăng nhập
               </label>
               <input
                 type="text"
-                id="username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md
+                  focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="Nhập tên đăng nhập"
                 required
                 autoFocus
@@ -97,15 +104,15 @@ const LoginPage: React.FC = () => {
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Mật khẩu
               </label>
               <input
                 type="password"
-                id="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md
+                  focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="Nhập mật khẩu"
                 required
                 disabled={loading}
@@ -119,7 +126,12 @@ const LoginPage: React.FC = () => {
               </div>
             )}
 
-            <Button type="submit" disabled={loading} className="w-full" size="lg">
+            <Button
+              type="submit"
+              disabled={loading}
+              className="w-full"
+              size="lg"
+            >
               {loading ? (
                 <>
                   <i className="ri-loader-4-line animate-spin mr-2"></i>
@@ -136,9 +148,11 @@ const LoginPage: React.FC = () => {
         </Card>
 
         <div className="text-center mt-6">
-          <a href="/" className="text-blue-600 hover:text-blue-800 text-sm">
-            <i className="ri-arrow-left-line mr-1"></i>
-            Quay về trang chủ
+          <a
+            href="/"
+            className="text-blue-600 hover:text-blue-800 text-sm"
+          >
+            <i className="ri-arrow-left-line mr-1"></i> Quay về trang chủ
           </a>
         </div>
       </div>

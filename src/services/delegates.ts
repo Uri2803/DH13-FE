@@ -2,7 +2,6 @@
 import api from "../lib/api";
 
 export type DelegateRow = {
-  /** Dùng delegate_info.id để khớp realtime payload (delegateId) */
   id: number | string;
   delegateCode: string;
   fullName: string;
@@ -12,7 +11,8 @@ export type DelegateRow = {
   checkedIn?: boolean;
   checkinTime?: string | null;
   birthDate?: string;          // yyyy-MM-dd | ISO
-  studentId?: string;          // MSSV/MSC
+  studentId?: string;  
+  ava?: string | null; 
 };
 
 const toRow = (u: any): DelegateRow | null => {
@@ -29,15 +29,16 @@ const toRow = (u: any): DelegateRow | null => {
     checkinTime: di?.checkinTime ?? null,
     birthDate: di?.dateOfBirth ?? null,
     studentId: di?.mssv_or_mscb ?? u?.mssv ?? '',
+    ava: u?.ava ?? null,  
   };
 };
 
 
 /** ADMIN: lấy tất cả đại biểu */
 export async function fetchDelegatesAll(): Promise<DelegateRow[]> {
-  const res = await api.get('/user/delegates'); // xem phần 4 nếu BE chưa có route này
+  const res = await api.get('/user/delegates'); 
   const arr = Array.isArray(res) ? res : res?.data ?? [];
-  return arr.map(toRow).filter(Boolean) as DelegateRow[];
+  return arr.map(toRow).filter(Boolean)
 }
 
 /** PHÒNG/KHOA: lấy đại biểu theo departmentId */

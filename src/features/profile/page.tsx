@@ -1,10 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+// src/pages/profile/ProfilePage.tsx
+import React, { useEffect, useState } from 'react';
 import { Navigation } from '../../components/feature/Navigation';
 import { Card } from '../../components/base/Card';
 import { Button } from '../../components/base/Button';
 import { useAuth } from '../../hooks/useAuth';
-import { getInfor, updateInfor } from '../../services/auth';
-import api from '../../lib/api'; // axios instance: baseURL + withCredentials: true
+import { getInfor, changePassword, uploadAvatar } from '../../services/auth';
 
 type DelegateVM = {
   id?: number | string;
@@ -17,10 +17,10 @@ type DelegateVM = {
   religion?: string;
   ethnicity?: string;
   unionJoinDate?: string;
-  partyJoinDate?: string;     // (ở BE là joinAssociationDate)
-  partyMember?: boolean;      // isPartyMember
-  academicYear?: number;      // studentYear
-  gpa?: string | number;      // academicScore
+  partyJoinDate?: string;
+  partyMember?: boolean;
+  academicYear?: number;
+  gpa?: string | number;
   achievements?: string;
   shirtSize?: string;
   phone?: string;
@@ -28,6 +28,7 @@ type DelegateVM = {
   unit?: string;
   checkedIn?: boolean;
   checkinTime?: string;
+  avatarUrl?: string;
 };
 
 const dateToInput = (d?: string | Date | null) => {
@@ -44,42 +45,55 @@ const dateToVN = (d?: string | Date | null) => {
   return dt.toLocaleDateString('vi-VN');
 };
 
+const normalize = (apiUser: any): DelegateVM => {
+  const di = apiUser?.delegateInfo ?? {};
+  return {
+    id: di?.id ?? apiUser?.id,
+    fullName: apiUser?.name || apiUser?.fullName || '',
+    delegateCode: di?.code ?? apiUser?.code,
+    position: di?.position,
+    studentId: apiUser?.mssv ?? di?.mssv_or_mscb,
+    birthDate: dateToInput(di?.dateOfBirth),
+    gender: di?.gender,
+    religion: di?.religion,
+    ethnicity: di?.ethnicity,
+    unionJoinDate: dateToInput(di?.joinUnionDate),
+    partyJoinDate: dateToInput(di?.joinAssociationDate),
+    partyMember: !!di?.isPartyMember,
+    academicYear: di?.studentYear ? Number(di?.studentYear) : undefined,
+    gpa: di?.academicScore,
+    achievements: di?.achievements,
+    shirtSize: di?.shirtSize,
+    phone: di?.phone,
+    email: di?.email ?? apiUser?.email,
+    unit: apiUser?.department?.name,
+    checkedIn: !!di?.checkedIn,
+    checkinTime: di?.checkinTime,
+    avatarUrl: apiUser?.ava || undefined,
+  };
+};
+
 const ProfilePage: React.FC = () => {
   const { user } = useAuth();
-  const [delegate, setDelegate]     = useState<DelegateVM | null>(null);
-  const [editing, setEditing]       = useState(false);
-  const [formData, setFormData]     = useState<DelegateVM | null>(null);
-  const [saving, setSaving]         = useState(false);
-  const [loading, setLoading]       = useState(true);
-  const [loadError, setLoadError]   = useState<string>('');
-  const [saveError, setSaveError]   = useState<string>('');
 
-  const normalize = (apiUser: any): DelegateVM => {
-    const di = apiUser?.delegateInfo ?? {};
-    return {
-      id: di?.id ?? apiUser?.id,
-      fullName: apiUser?.name || apiUser?.fullName || '',
-      delegateCode: di?.code ?? apiUser?.code,
-      position: di?.position,
-      studentId: apiUser?.mssv ?? di?.mssv_or_mscb,
-      birthDate: dateToInput(di?.dateOfBirth),
-      gender: di?.gender,
-      religion: di?.religion,
-      ethnicity: di?.ethnicity,
-      unionJoinDate: dateToInput(di?.joinUnionDate),
-      partyJoinDate: dateToInput(di?.joinAssociationDate),
-      partyMember: !!di?.isPartyMember,
-      academicYear: di?.studentYear ? Number(di?.studentYear) : undefined,
-      gpa: di?.academicScore,
-      achievements: di?.achievements,
-      shirtSize: di?.shirtSize,
-      phone: di?.phone,
-      email: di?.email ?? apiUser?.email,
-      unit: apiUser?.department?.name,
-      checkedIn: !!di?.checkedIn,
-      checkinTime: di?.checkinTime,
-    };
-  };
+  const [delegate, setDelegate] = useState<DelegateVM | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+
+  // Avatar state
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarError, setAvatarError] = useState('');
+  const [avatarSuccess, setAvatarSuccess] = useState('');
+
+  // Password state
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
 
   useEffect(() => {
     let mounted = true;
@@ -98,70 +112,101 @@ const ProfilePage: React.FC = () => {
         }
 
         const res = await getInfor();
-        const vm  = normalize(res);
+        const vm = normalize(res);
         if (mounted) {
           setDelegate(vm);
-          setFormData(vm);
         }
       } catch (err: any) {
-        if (mounted) setLoadError(err?.message || 'Không tải được hồ sơ.');
+        if (mounted) {
+          setLoadError(err?.message || 'Không tải được hồ sơ.');
+        }
       } finally {
         if (mounted) setLoading(false);
       }
     })();
+
     return () => {
       mounted = false;
     };
   }, [user]);
 
-  const handleInputChange = (field: keyof DelegateVM, value: any) => {
-    setFormData(prev => ({ ...(prev || {}), [field]: value }) as DelegateVM);
-  };
+  const handleAvatarChange = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-  const updateDelegateInfo = async (payload: any) =>{
-    return updateInfor(payload)
-  };
-
-  const handleSave = async () => {
-    if (!formData) return;
+    setAvatarError('');
+    setAvatarSuccess('');
+    setAvatarUploading(true);
 
     try {
-      setSaving(true);
-      setSaveError('');
-
-      const payload = {
-        code: formData.delegateCode,
-        position: formData.position,
-        mssv_or_mscb: formData.studentId,
-        dateOfBirth: formData.birthDate || null,
-        gender: formData.gender,
-        religion: formData.religion,
-        ethnicity: formData.ethnicity,
-        joinUnionDate: formData.unionJoinDate || null,
-        joinAssociationDate: formData.partyJoinDate || null,
-        isPartyMember: !!formData.partyMember,
-        studentYear: formData.academicYear ? Number(formData.academicYear) : null,
-        academicScore:
-          typeof formData.gpa === 'number' ? formData.gpa.toFixed(2) : formData.gpa,
-        achievements: formData.achievements,
-        shirtSize: formData.shirtSize,
-        phone: formData.phone,
-        email: formData.email,
-      };
-
-      await updateDelegateInfo(payload);
-
-
+      const res = await uploadAvatar(file);
+      // có thể dùng res.user, nhưng để chắc thì gọi lại getInfor
       const latest = await getInfor();
       const vm = normalize(latest);
       setDelegate(vm);
-      setFormData(vm);
-      setEditing(false);
+      setAvatarSuccess('Cập nhật ảnh đại diện thành công.');
     } catch (err: any) {
-      const msg = err?.response?.data?.message || err?.message || 'Không thể lưu thay đổi.';
-      setSaveError(Array.isArray(msg) ? msg[0] : msg);
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Không thể cập nhật ảnh đại diện.';
+      setAvatarError(Array.isArray(msg) ? msg[0] : msg);
     } finally {
-      setSaving(false);
+      setAvatarUploading(false);
+      // reset input value
+      e.target.value = '';
+    }
+  };
+
+  const handlePasswordChange = (
+    field: keyof typeof passwordForm,
+    value: string,
+  ) => {
+    setPasswordForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSubmitPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    if (!passwordForm.currentPassword || !passwordForm.newPassword) {
+      setPasswordError('Vui lòng nhập đầy đủ mật khẩu hiện tại và mật khẩu mới.');
+      return;
+    }
+
+    if (passwordForm.newPassword.length < 6) {
+      setPasswordError('Mật khẩu mới phải từ 6 ký tự trở lên.');
+      return;
+    }
+
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordError('Xác nhận mật khẩu mới không khớp.');
+      return;
+    }
+
+    try {
+      setPasswordSaving(true);
+      await changePassword({
+        currentPassword: passwordForm.currentPassword,
+        newPassword: passwordForm.newPassword,
+      });
+      setPasswordSuccess('Đổi mật khẩu thành công.');
+      setPasswordForm({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+      });
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Không thể đổi mật khẩu.';
+      setPasswordError(Array.isArray(msg) ? msg[0] : msg);
+    } finally {
+      setPasswordSaving(false);
     }
   };
 
@@ -195,376 +240,319 @@ const ProfilePage: React.FC = () => {
       <Navigation />
 
       <div className="container mx-auto px-4 py-8">
-        <div className="flex justify-between items-center mb-8">
+        {/* Header */}
+        <div className="flex flex-col gap-2 mb-8 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-800 mb-2">Hồ sơ cá nhân</h1>
-            <p className="text-gray-600">Thông tin đại biểu của bạn</p>
+            <h1 className="text-3xl font-bold text-gray-800 mb-1">
+              Hồ sơ cá nhân
+            </h1>
+            <p className="text-gray-600">
+              Thông tin đại biểu & cài đặt tài khoản
+            </p>
           </div>
-          {!editing ? (
-            <Button onClick={() => setEditing(true)}>
-              <i className="ri-edit-line mr-2"></i>
-              Chỉnh sửa
-            </Button>
-          ) : (
-            <div className="flex space-x-2">
-              <Button onClick={() => { setFormData(delegate); setEditing(false); }} variant="secondary">
-                <i className="ri-close-line mr-2"></i>
-                Hủy
-              </Button>
-              <Button onClick={handleSave} disabled={saving}>
-                {saving ? (
-                  <>
-                    <i className="ri-loader-4-line animate-spin mr-2"></i>
-                    Đang lưu...
-                  </>
-                ) : (
-                  <>
-                    <i className="ri-save-line mr-2"></i>
-                    Lưu
-                  </>
-                )}
-              </Button>
-            </div>
-          )}
         </div>
 
-        {saveError && (
-          <div className="mb-6 bg-red-50 text-red-700 border border-red-200 rounded-md p-3">
-            <i className="ri-error-warning-line mr-2" />
-            {saveError}
-          </div>
-        )}
-
         <div className="grid lg:grid-cols-3 gap-8">
-          {/* Tóm tắt */}
+          {/* Tóm tắt + Avatar */}
           <Card>
             <div className="text-center">
-              <div className="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <i className="ri-user-line text-3xl text-blue-600"></i>
+              <div className="relative mx-auto mb-4 h-28 w-28">
+                <div className="h-full w-full overflow-hidden rounded-full border-4 border-blue-100 bg-blue-50 flex items-center justify-center">
+                  {delegate.avatarUrl ? (
+                    <img
+                      src={delegate.avatarUrl}
+                      alt="Avatar"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <i className="ri-user-line text-4xl text-blue-500" />
+                  )}
+                </div>
+
+                {/* nút upload nhỏ ở góc */}
+                <label className="absolute bottom-0 right-0 inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-blue-600 text-white shadow-md hover:bg-blue-700">
+                  <i className="ri-camera-line text-lg" />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleAvatarChange}
+                  />
+                </label>
               </div>
-              <h2 className="text-xl font-semibold text-gray-800 mb-1">{delegate.fullName || '-'}</h2>
-              <p className="text-gray-600 mb-2">{delegate.delegateCode || '-'}</p>
-              <p className="text-sm text-gray-500 mb-4">{delegate.position || '-'}</p>
+
+              {avatarUploading && (
+                <div className="mb-2 text-xs text-gray-500">
+                  <i className="ri-loader-4-line animate-spin mr-1" />
+                  Đang tải lên ảnh...
+                </div>
+              )}
+              {avatarError && (
+                <div className="mb-2 rounded bg-red-50 px-2 py-1 text-xs text-red-600">
+                  {avatarError}
+                </div>
+              )}
+              {avatarSuccess && (
+                <div className="mb-2 rounded bg-green-50 px-2 py-1 text-xs text-green-600">
+                  {avatarSuccess}
+                </div>
+              )}
+
+              <h2 className="mb-1 text-xl font-semibold text-gray-800">
+                {delegate.fullName || '-'}
+              </h2>
+              <p className="text-sm text-gray-600">
+                {delegate.delegateCode || '-'}
+              </p>
+              <p className="mb-4 text-xs text-gray-500">
+                {delegate.position || '-'}
+              </p>
 
               <div className="space-y-2 text-sm">
-                <div className="flex items-center justify-center space-x-2">
-                  <i className="ri-building-line text-gray-400"></i>
+                <div className="flex items-center justify-center gap-2 text-gray-600">
+                  <i className="ri-building-line text-gray-400" />
                   <span>{delegate.unit || '-'}</span>
                 </div>
-                <div className="flex items-center justify-center space-x-2">
-                  <i className="ri-phone-line text-gray-400"></i>
+                <div className="flex items-center justify-center gap-2 text-gray-600">
+                  <i className="ri-phone-line text-gray-400" />
                   <span>{delegate.phone || '-'}</span>
                 </div>
-                <div className="flex items-center justify-center space-x-2">
-                  <i className="ri-mail-line text-gray-400"></i>
+                <div className="flex items-center justify-center gap-2 text-gray-600">
+                  <i className="ri-mail-line text-gray-400" />
                   <span>{delegate.email || '-'}</span>
                 </div>
               </div>
 
               {delegate.checkedIn && (
-                <div className="mt-4 p-3 bg-green-50 rounded-lg">
-                  <div className="flex items-center justify-center text-green-600 text-sm">
-                    <i className="ri-check-line mr-2"></i>
+                <div className="mt-4 rounded-lg bg-green-50 p-3">
+                  <div className="flex items-center justify-center text-sm text-green-600">
+                    <i className="ri-check-line mr-2" />
                     Đã điểm danh
                   </div>
-                  <div className="text-xs text-green-500 mt-1">
-                    {delegate.checkinTime ? new Date(delegate.checkinTime).toLocaleString('vi-VN') : ''}
+                  <div className="mt-1 text-xs text-green-500">
+                    {delegate.checkinTime
+                      ? new Date(delegate.checkinTime).toLocaleString('vi-VN')
+                      : ''}
                   </div>
                 </div>
               )}
             </div>
           </Card>
 
-          {/* Chi tiết */}
-          <div className="lg:col-span-2 space-y-6">
+          {/* Thông tin hiển thị (read-only) */}
+          <div className="space-y-6 lg:col-span-2">
             <Card>
-              <h3 className="text-lg font-semibold mb-4 flex items-center">
-                <i className="ri-user-settings-line text-blue-500 mr-2"></i>
+              <h3 className="mb-4 flex items-center text-lg font-semibold">
+                <i className="ri-user-settings-line mr-2 text-blue-500" />
                 Thông tin cá nhân
               </h3>
 
-              <div className="grid md:grid-cols-2 gap-4">
+              <div className="grid gap-4 md:grid-cols-2">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Họ và tên *
-                  </label>
-                  {editing ? (
-                    <input
-                      type="text"
-                      value={formData?.fullName || ''}
-                      onChange={(e) => handleInputChange('fullName', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  ) : (
-                    <div className="py-2 text-gray-800">{delegate.fullName || '-'}</div>
-                  )}
+                  <div className="text-xs font-semibold uppercase text-gray-500">
+                    Họ và tên
+                  </div>
+                  <div className="mt-1 text-gray-800">
+                    {delegate.fullName || '-'}
+                  </div>
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <div className="text-xs font-semibold uppercase text-gray-500">
                     MSSV
-                  </label>
-                  {editing ? (
-                    <input
-                      type="text"
-                      value={formData?.studentId || ''}
-                      onChange={(e) => handleInputChange('studentId', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  ) : (
-                    <div className="py-2 text-gray-800">{delegate.studentId || '-'}</div>
-                  )}
+                  </div>
+                  <div className="mt-1 text-gray-800">
+                    {delegate.studentId || '-'}
+                  </div>
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <div className="text-xs font-semibold uppercase text-gray-500">
                     Ngày sinh
-                  </label>
-                  {editing ? (
-                    <input
-                      type="date"
-                      value={formData?.birthDate || ''}
-                      onChange={(e) => handleInputChange('birthDate', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  ) : (
-                    <div className="py-2 text-gray-800">
-                      {delegate.birthDate ? dateToVN(delegate.birthDate) : '-'}
-                    </div>
-                  )}
+                  </div>
+                  <div className="mt-1 text-gray-800">
+                    {delegate.birthDate
+                      ? dateToVN(delegate.birthDate)
+                      : '-'}
+                  </div>
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <div className="text-xs font-semibold uppercase text-gray-500">
                     Giới tính
-                  </label>
-                  {editing ? (
-                    <select
-                      value={formData?.gender || ''}
-                      onChange={(e) => handleInputChange('gender', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-8"
-                    >
-                      <option value="">-- Chọn --</option>
-                      <option value="Nam">Nam</option>
-                      <option value="Nữ">Nữ</option>
-                    </select>
-                  ) : (
-                    <div className="py-2 text-gray-800">{delegate.gender || '-'}</div>
-                  )}
+                  </div>
+                  <div className="mt-1 text-gray-800">
+                    {delegate.gender || '-'}
+                  </div>
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <div className="text-xs font-semibold uppercase text-gray-500">
                     Tôn giáo
-                  </label>
-                  {editing ? (
-                    <input
-                      type="text"
-                      value={formData?.religion || ''}
-                      onChange={(e) => handleInputChange('religion', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  ) : (
-                    <div className="py-2 text-gray-800">{delegate.religion || '-'}</div>
-                  )}
+                  </div>
+                  <div className="mt-1 text-gray-800">
+                    {delegate.religion || '-'}
+                  </div>
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <div className="text-xs font-semibold uppercase text-gray-500">
                     Dân tộc
-                  </label>
-                  {editing ? (
-                    <input
-                      type="text"
-                      value={formData?.ethnicity || ''}
-                      onChange={(e) => handleInputChange('ethnicity', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  ) : (
-                    <div className="py-2 text-gray-800">{delegate.ethnicity || '-'}</div>
-                  )}
+                  </div>
+                  <div className="mt-1 text-gray-800">
+                    {delegate.ethnicity || '-'}
+                  </div>
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Số điện thoại
-                  </label>
-                  {editing ? (
-                    <input
-                      type="tel"
-                      value={formData?.phone || ''}
-                      onChange={(e) => handleInputChange('phone', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  ) : (
-                    <div className="py-2 text-gray-800">{delegate.phone || '-'}</div>
-                  )}
+                  <div className="text-xs font-semibold uppercase text-gray-500">
+                    Năm học
+                  </div>
+                  <div className="mt-1 text-gray-800">
+                    {delegate.academicYear
+                      ? `Năm ${delegate.academicYear}`
+                      : '-'}
+                  </div>
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Email
-                  </label>
-                  {editing ? (
-                    <input
-                      type="email"
-                      value={formData?.email || ''}
-                      onChange={(e) => handleInputChange('email', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  ) : (
-                    <div className="py-2 text-gray-800">{delegate.email || '-'}</div>
-                  )}
+                  <div className="text-xs font-semibold uppercase text-gray-500">
+                    Điểm trung bình
+                  </div>
+                  <div className="mt-1 text-gray-800">
+                    {delegate.gpa ? `${delegate.gpa}/4.0` : '-'}
+                  </div>
                 </div>
               </div>
             </Card>
 
             <Card>
-              <h3 className="text-lg font-semibold mb-4 flex items-center">
-                <i className="ri-government-line text-red-500 mr-2"></i>
+              <h3 className="mb-4 flex items-center text-lg font-semibold">
+                <i className="ri-government-line mr-2 text-red-500" />
                 Thông tin chính trị - xã hội
               </h3>
 
-              <div className="grid md:grid-cols-2 gap-4">
+              <div className="grid gap-4 md:grid-cols-2">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <div className="text-xs font-semibold uppercase text-gray-500">
                     Ngày vào Đoàn
-                  </label>
-                  {editing ? (
-                    <input
-                      type="date"
-                      value={formData?.unionJoinDate || ''}
-                      onChange={(e) => handleInputChange('unionJoinDate', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  ) : (
-                    <div className="py-2 text-gray-800">
-                      {delegate.unionJoinDate ? dateToVN(delegate.unionJoinDate) : '-'}
-                    </div>
-                  )}
+                  </div>
+                  <div className="mt-1 text-gray-800">
+                    {delegate.unionJoinDate
+                      ? dateToVN(delegate.unionJoinDate)
+                      : '-'}
+                  </div>
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <div className="text-xs font-semibold uppercase text-gray-500">
                     Ngày vào Hội
-                  </label>
-                  {editing ? (
-                    <input
-                      type="date"
-                      value={formData?.partyJoinDate || ''}
-                      onChange={(e) => handleInputChange('partyJoinDate', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  ) : (
-                    <div className="py-2 text-gray-800">
-                      {delegate.partyJoinDate ? dateToVN(delegate.partyJoinDate) : '-'}
-                    </div>
-                  )}
+                  </div>
+                  <div className="mt-1 text-gray-800">
+                    {delegate.partyJoinDate
+                      ? dateToVN(delegate.partyJoinDate)
+                      : '-'}
+                  </div>
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <div className="text-xs font-semibold uppercase text-gray-500">
                     Đảng viên
-                  </label>
-                  {editing ? (
-                    <select
-                      value={String(!!formData?.partyMember)}
-                      onChange={(e) => handleInputChange('partyMember', e.target.value === 'true')}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-8"
-                    >
-                      <option value="false">Chưa</option>
-                      <option value="true">Đã là đảng viên</option>
-                    </select>
-                  ) : (
-                    <div className="py-2 text-gray-800">
-                      {delegate.partyMember ? 'Đã là đảng viên' : 'Chưa'}
-                    </div>
-                  )}
+                  </div>
+                  <div className="mt-1 text-gray-800">
+                    {delegate.partyMember ? 'Đã là đảng viên' : 'Chưa'}
+                  </div>
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Năm học
-                  </label>
-                  {editing ? (
-                    <select
-                      value={formData?.academicYear ?? ''}
-                      onChange={(e) => handleInputChange('academicYear', Number(e.target.value))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-8"
-                    >
-                      <option value="">-- Chọn --</option>
-                      {[1,2,3,4,5].map(n => <option key={n} value={n}>Năm {n}</option>)}
-                    </select>
-                  ) : (
-                    <div className="py-2 text-gray-800">
-                      {delegate.academicYear ? `Năm ${delegate.academicYear}` : '-'}
-                    </div>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Điểm trung bình
-                  </label>
-                  {editing ? (
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="4"
-                      value={formData?.gpa ?? ''}
-                      onChange={(e) => handleInputChange('gpa', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  ) : (
-                    <div className="py-2 text-gray-800">
-                      {delegate.gpa ? `${delegate.gpa}/4.0` : '-'}
-                    </div>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <div className="text-xs font-semibold uppercase text-gray-500">
                     Size áo sơ mi
-                  </label>
-                  {editing ? (
-                    <select
-                      value={formData?.shirtSize || ''}
-                      onChange={(e) => handleInputChange('shirtSize', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-8"
-                    >
-                      <option value="">-- Chọn --</option>
-                      {['S','M','L','XL','XXL'].map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  ) : (
-                    <div className="py-2 text-gray-800">{delegate.shirtSize || '-'}</div>
-                  )}
+                  </div>
+                  <div className="mt-1 text-gray-800">
+                    {delegate.shirtSize || '-'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <div className="text-xs font-semibold uppercase text-gray-500">
+                  Thành tích nổi bật
+                </div>
+                <div className="mt-1 whitespace-pre-line text-gray-800">
+                  {delegate.achievements || '-'}
                 </div>
               </div>
             </Card>
 
+            {/* Đổi mật khẩu */}
             <Card>
-              <h3 className="text-lg font-semibold mb-4 flex items-center">
-                <i className="ri-trophy-line text-yellow-500 mr-2"></i>
-                Thành tích
+              <h3 className="mb-4 flex items-center text-lg font-semibold">
+                <i className="ri-lock-password-line mr-2 text-purple-500" />
+                Đổi mật khẩu
               </h3>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Thành tích nổi bật
-                </label>
-                {editing ? (
-                  <textarea
-                    value={formData?.achievements || ''}
-                    onChange={(e) => handleInputChange('achievements', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    rows={3}
-                    maxLength={500}
+              {passwordError && (
+                <div className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  <i className="ri-error-warning-line mr-2" />
+                  {passwordError}
+                </div>
+              )}
+              {passwordSuccess && (
+                <div className="mb-3 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+                  <i className="ri-checkbox-circle-line mr-2" />
+                  {passwordSuccess}
+                </div>
+              )}
+
+              <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmitPassword}>
+                <div className="md:col-span-2">
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Mật khẩu hiện tại
+                  </label>
+                  <input
+                    type="password"
+                    value={passwordForm.currentPassword}
+                    onChange={(e) =>
+                      handlePasswordChange('currentPassword', e.target.value)
+                    }
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    autoComplete="current-password"
                   />
-                ) : (
-                  <div className="py-2 text-gray-800">{delegate.achievements || '-'}</div>
-                )}
-              </div>
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Mật khẩu mới
+                  </label>
+                  <input
+                    type="password"
+                    value={passwordForm.newPassword}
+                    onChange={(e) =>
+                      handlePasswordChange('newPassword', e.target.value)
+                    }
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    autoComplete="new-password"
+                  />
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Xác nhận mật khẩu mới
+                  </label>
+                  <input
+                    type="password"
+                    value={passwordForm.confirmPassword}
+                    onChange={(e) =>
+                      handlePasswordChange('confirmPassword', e.target.value)
+                    }
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    autoComplete="new-password"
+                  />
+                </div>
+                <div className="md:col-span-2 flex justify-end">
+                  <Button type="submit" disabled={passwordSaving}>
+                    {passwordSaving ? (
+                      <>
+                        <i className="ri-loader-4-line mr-2 animate-spin" />
+                        Đang đổi mật khẩu...
+                      </>
+                    ) : (
+                      <>
+                        <i className="ri-save-line mr-2" />
+                        Lưu mật khẩu mới
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </form>
             </Card>
           </div>
         </div>

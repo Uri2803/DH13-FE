@@ -22,6 +22,7 @@
     "aos": "^2.3.4",
     "axios": "^1.12.2",
     "canvas-confetti": "^1.9.4",
+    "dayjs": "^1.11.19",
     "dotenv": "^17.2.3",
     "framer-motion": "^12.23.24",
     "i18next": "^25.6.0",
@@ -39,7 +40,8 @@
     "recharts": "^3.3.0",
     "remixicon": "^4.7.0",
     "socket.io-client": "^4.8.1",
-    "tsparticles": "^3.9.1"
+    "tsparticles": "^3.9.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
