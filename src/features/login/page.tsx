@@ -55,7 +55,7 @@ const LoginPage: React.FC = () => {
 
       {/* ẢNH NỀN */}
       <img
-        src="/src/assets/image/nedh.png"
+        src="src/assets/image/nền đại hội.png"
         alt="background"
         className="absolute inset-0 w-full h-full object-cover -z-20 select-none pointer-events-none"
       />
@@ -80,7 +80,9 @@ const LoginPage: React.FC = () => {
 
           <p className="text-gray-600">
             Đại hội Hội Sinh viên<br />
-            <strong>Trường Đại học Khoa học Tự nhiên – ĐHQG-HCM</strong>
+             <span className="flex items-center justify-center gap-2 whitespace-nowrap mt-2 first:mt-0">
+               <strong>Trường Đại học Khoa học Tự nhiên, ĐHQG-HCM</strong>
+            </span>
           </p>
         </div>
 
