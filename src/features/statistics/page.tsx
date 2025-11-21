@@ -121,7 +121,7 @@ const StatisticsPage: React.FC = () => {
 
   const ageInfo = useMemo(() => {
     const list = delegates
-      .map((d) => ({ d, age: getAge(d.birthDate) }))
+      .map((d) => ({ d, age: getAge(d.birthDate ?? undefined) }))
       .filter((x) => x.age > 0);
 
     if (!list.length) {
@@ -409,7 +409,7 @@ const StatisticsPage: React.FC = () => {
               {ageInfo.oldest ? (
                 <>
                   <div className="text-xl font-semibold text-blue-700">
-                    {getAge(ageInfo.oldest.birthDate)} tuổi
+                    {getAge(ageInfo.oldest.birthDate?? undefined)} tuổi
                   </div>
                   <div className="text-xs text-gray-600 mt-1">
                     {ageInfo.oldest.fullName} ({ageInfo.oldest.unit})
@@ -424,7 +424,7 @@ const StatisticsPage: React.FC = () => {
               {ageInfo.youngest ? (
                 <>
                   <div className="text-xl font-semibold text-emerald-700">
-                    {getAge(ageInfo.youngest.birthDate)} tuổi
+                    {getAge(ageInfo.youngest.birthDate ?? undefined)} tuổi
                   </div>
                   <div className="text-xs text-gray-600 mt-1">
                     {ageInfo.youngest.fullName} ({ageInfo.youngest.unit})

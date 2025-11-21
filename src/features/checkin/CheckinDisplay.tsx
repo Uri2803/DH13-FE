@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { getSocket } from '../../utils/socket';
 import { fetchDelegatesAll, fetchDelegateById } from '../../services/delegates';
-
+import bg from '../../assets/image/WEB DISPLAY.png'
 // ✅ Helper đọc giọng fallback nếu cần
 const basicSpeak = (text: string) => {
   try {
@@ -251,7 +251,7 @@ const CheckinDisplay: React.FC = () => {
 
   return (
     <div className="relative min-h-screen w-full overflow-hidden">
-      <img src="src/assets/image/WEB DISPLAY.png" alt="" className="absolute inset-0 w-full h-full object-cover" />
+      <img src={bg} alt="" className="absolute inset-0 w-full h-full object-cover" />
       <div className="absolute inset-0 bg-black/10 pointer-events-none" />
 
       {/* Header */}

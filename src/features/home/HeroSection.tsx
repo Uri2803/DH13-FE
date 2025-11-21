@@ -30,62 +30,117 @@ const HeroSection: React.FC<HeroSectionProps> = ({
               <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-cyan-500/10 via-cyan-400/5 to-transparent rounded-bl-3xl" />
 
               {/* Khẩu hiệu */}
-              <h2 className="mb-8 leading-tight text-center font-bold">
-                {['VỮNG BƯỚC TRI THỨC', 'KHƠI NGUỒN SÁNG TẠO', 'KIẾN TẠO TƯƠNG LAI'].map(
-                  (line, i) => (
-                    <span
-                      key={i}
-                      className="flex items-center justify-center gap-2 whitespace-nowrap mt-2 first:mt-0"
-                    >
-                      <i
-                        className="ri-star-fill text-cyan-700 text-xl sm:text-2xl animate-pulse drop-shadow-lg"
-                        style={{ animationDelay: '0.5s' }}
-                      />
-                      <span
-                        className="
-                          text-base sm:text-xl md:text-2xl
-                          bg-gradient-to-r from-cyan-500 via-cyan-500 to-cyan-700
-                          bg-clip-text text-transparent tracking-wide
-                          animate-gradient-move
-                        "
-                      >
-                        {line}
-                      </span>
-                      <i
-                        className="ri-star-fill text-cyan-700 text-xl sm:text-2xl animate-pulse drop-shadow-lg"
-                        style={{ animationDelay: '0.5s' }}
-                      />
-                    </span>
-                  ),
-                )}
-              </h2>
+              <h2
+  className="
+    mb-6 text-center font-bold leading-tight
+    space-y-1
+  "
+>
+  {['VỮNG BƯỚC TRI THỨC', 'KHƠI NGUỒN SÁNG TẠO', 'KIẾN TẠO TƯƠNG LAI'].map(
+    (line, i) => (
+      <span
+        key={i}
+        className="
+          flex items-center justify-center gap-2
+          mt-1 first:mt-0
+          px-2
+          whitespace-nowrap
+        "
+      >
+        <i
+          className="
+            ri-star-fill text-cyan-700
+            text-lg sm:text-xl md:text-2xl
+            animate-pulse drop-shadow-lg
+          "
+          style={{ animationDelay: '0.5s' }}
+        />
+        <span
+          className="
+            text-sm sm:text-lg md:text-2xl
+            bg-gradient-to-r from-cyan-500 via-cyan-500 to-cyan-700
+            bg-clip-text text-transparent tracking-wide
+            animate-gradient-move
+          "
+        >
+          {line}
+        </span>
+        <i
+          className="
+            ri-star-fill text-cyan-700
+            text-lg sm:text-xl md:text-2xl
+            animate-pulse drop-shadow-lg
+          "
+          style={{ animationDelay: '0.5s' }}
+        />
+      </span>
+    ),
+  )}
+    </h2>
+        <div className="max-w-xl mx-auto space-y-4 text-gray-700 text-sm sm:text-base leading-relaxed md:leading-loose">
 
-              {/* Mô tả */}
-              <p className="text-base sm:text-xl md:text-xl text-gray-700 mb-10 leading-relaxed font-medium text-center">
-                Hội Sinh viên Trường Đại học Khoa học Tự nhiên, ĐHQG-HCM định hướng
-                xây dựng thế hệ sinh viên bản lĩnh, có lý tưởng, giàu lòng yêu nước,
-                chủ động học tập – nghiên cứu khoa học, nâng cao kỹ năng thực hành xã
-                hội, sẵn sàng hội nhập và khát vọng cống hiến trong kỷ nguyên chuyển
-                đổi số.
-              </p>
+        <div className="flex gap-3 items-start">
+            <span className="text-lg">📍</span>
+            <p>
+            Hội Sinh viên Trường ĐH Khoa học Tự nhiên là mái nhà chung của những tuổi trẻ
+            <span className="font-semibold text-cyan-700"> khát vọng – sáng tạo – bản lĩnh – trách nhiệm</span>.
+            </p>
+        </div>
 
-              <div className="flex flex-col sm:flex-row justify-center items-center gap-6">
-                <Link to="/login">
-                  <button className="group bg-gradient-to-r from-cyan-500 via-cyan-600 to-cyan-700 hover:from-cyan-600 hover:via-cyan-700 hover:to-cyan-800 text-white px-8 py-4 sm:px-10 sm:py-5 text-base sm:text-lg font-semibold rounded-2xl transition-all duration-300 whitespace-nowrap cursor-pointer shadow-xl hover:shadow-2xl transform hover:-translate-y-2 relative overflow-hidden">
-                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 transform -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
-                    <i className="ri-login-box-line mr-2 sm:mr-3 group-hover:scale-110 transition-transform" />
-                    Đăng nhập hệ thống
-                  </button>
-                </Link>
-                <Link to="/wishes">
-                  <button className="group bg-white hover:bg-cyan-50 text-cyan-700 border-3 border-cyan-500 hover:border-cyan-600 px-8 py-4 sm:px-10 sm:py-5 text-base sm:text-lg font-semibold rounded-2xl transition-all duration-300 whitespace-nowrap cursor-pointer shadow-xl hover:shadow-2xl transform hover:-translate-y-2 relative overflow-hidden">
-                    <div className="absolute inset-0 bg-gradient-to-r from-cyan-400/0 via-cyan-400/10 to-cyan-400/0 transform -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
-                    <i className="ri-heart-line mr-2 sm:mr-3 group-hover:scale-110 transition-transform" />
-                    Gửi lời chúc
-                  </button>
-                </Link>
-              </div>
-            </div>
+        <div className="flex gap-3 items-start">
+            <span className="text-lg">⭐</span>
+            <p>
+            Đồng hành cùng sinh viên trong 
+            <span className="font-semibold text-cyan-700"> học tập, nghiên cứu khoa học</span> 
+            và phong trào <span className="font-semibold text-cyan-700">Sinh viên 5 Tốt</span>.
+            </p>
+        </div>
+
+        <div className="flex gap-3 items-start">
+            <span className="text-lg">✨</span>
+            <p>
+            Lan tỏa tinh thần <span className="font-semibold text-cyan-700">tình nguyện vì cộng đồng</span> 
+            và chăm lo <span className="font-semibold text-cyan-700">sức khỏe thể chất – tinh thần</span>.
+            </p>
+        </div>
+
+        <div className="flex gap-3 items-start">
+            <span className="text-lg">🚀</span>
+            <p>
+            Nâng cao <span className="font-semibold text-cyan-700">kỹ năng thực hành xã hội</span> trong kỷ nguyên 
+            <span className="font-semibold text-cyan-700"> kinh tế tri thức – chuyển đổi số</span>.
+            </p>
+        </div>
+
+        <div className="flex gap-3 items-start">
+            <span className="text-lg">🌍</span>
+            <p>
+            Từ nền tảng đó, sinh viên Tự nhiên tự tin 
+            <span className="font-semibold text-cyan-700"> hội nhập quốc tế, khởi nghiệp, đổi mới sáng tạo</span> 
+            và góp phần <span className="font-semibold text-cyan-700">kiến tạo tương lai đất nước</span>.
+            </p>
+        </div>
+
+        </div>
+
+    <div className="flex flex-col sm:flex-row justify-center items-center gap-6 mt-12">
+    <Link to="/login">
+        <button className="group bg-gradient-to-r from-cyan-500 via-cyan-600 to-cyan-700 hover:from-cyan-600 hover:via-cyan-700 hover:to-cyan-800 text-white px-8 py-4 sm:px-10 sm:py-5 text-base sm:text-lg font-semibold rounded-2xl transition-all duration-300 whitespace-nowrap cursor-pointer shadow-xl hover:shadow-2xl transform hover:-translate-y-2 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 transform -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+        <i className="ri-login-box-line mr-2 sm:mr-3 group-hover:scale-110 transition-transform" />
+        Đăng nhập hệ thống
+        </button>
+    </Link>
+    <Link to="/wishes">
+        <button className="group bg-white hover:bg-cyan-50 text-cyan-700 border-3 border-cyan-500 hover:border-cyan-600 px-8 py-4 sm:px-10 sm:py-5 text-base sm:text-lg font-semibold rounded-2xl transition-all duration-300 whitespace-nowrap cursor-pointer shadow-xl hover:shadow-2xl transform hover:-translate-y-2 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-r from-cyan-400/0 via-cyan-400/10 to-cyan-400/0 transform -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+        <i className="ri-heart-line mr-2 sm:mr-3 group-hover:scale-110 transition-transform" />
+        Gửi lời chúc
+        </button>
+    </Link>
+    </div>
+    </div>
+
           </div>
 
           {/* RIGHT HERO CAROUSEL */}

@@ -4,7 +4,7 @@ import { Card } from "../../components/base/Card";
 import { Button } from "../../components/base/Button";
 import { useAuth } from "../../hooks/useAuth";
 import { loginApi, getInfor } from "../../services/auth";
-
+import bg from '../../assets/image/nendaihoi.png'
 const LoginPage: React.FC = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -55,7 +55,7 @@ const LoginPage: React.FC = () => {
 
       {/* ẢNH NỀN */}
       <img
-        src="src/assets/image/nendaihoi.png"
+        src={bg}
         alt="background"
         className="absolute inset-0 w-full h-full object-cover -z-20 select-none pointer-events-none"
       />

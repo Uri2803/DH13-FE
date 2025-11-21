@@ -413,7 +413,7 @@ const ProfilePage: React.FC = () => {
                     Điểm trung bình
                   </div>
                   <div className="mt-1 text-gray-800">
-                    {delegate.gpa ? `${delegate.gpa}/4.0` : '-'}
+                    {delegate.gpa ? `${delegate.gpa}/10` : '-'}
                   </div>
                 </div>
               </div>

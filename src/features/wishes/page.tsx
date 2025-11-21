@@ -1,13 +1,15 @@
-// src/pages/wishes/WishesPage.tsx
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Navigation } from '../../components/feature/Navigation';
 import { useAuth } from '../../hooks/useAuth';
 import { fetchWishes, createWish, Wish } from '../../services/wishes';
 
-import bgImage from '../../assets/image/nền đại hội.png'; // <<-- ẢNH NỀN
+import bgImage from '../../assets/image/nendaihoi.png';          // ẢNH NỀN
+import congressLogo from '../../assets/image/1. Ava ĐH XIII.png'; // LOGO ĐẠI HỘI (cắt tròn)
 
 const WishesPage: React.FC = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   const isLoggedIn = !!user;
   const isDelegate = user?.role === 'delegate';
@@ -29,7 +31,6 @@ const WishesPage: React.FC = () => {
   });
 
   const [formData, setFormData] = useState(buildInitialFormData);
-
   const [wishes, setWishes] = useState<Wish[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -95,7 +96,7 @@ const WishesPage: React.FC = () => {
       alert(
         newWish?.isVerified
           ? 'Lời chúc đã được hiển thị!'
-          : 'Lời chúc đã gửi và chờ xét duyệt.'
+          : 'Lời chúc đã gửi và chờ xét duyệt.',
       );
     } finally {
       setSubmitting(false);
@@ -111,32 +112,64 @@ const WishesPage: React.FC = () => {
     });
 
   return (
-    <div className="relative min-h-screen bg-gray-50">
+    <div className="relative min-h-screen bg-gray-50 overflow-hidden">
       {/* Background Image */}
       <img
         src={bgImage}
         alt="bg"
-        className="fixed inset-0 w-full h-full object-cover opacity-40"
+        className="fixed inset-0 w-full h-full object-cover opacity-40 -z-20"
       />
 
       {/* Overlay mờ cho dễ đọc */}
-      <div className="fixed inset-0 bg-white/60 backdrop-blur-sm" />
+      <div className="fixed inset-0 bg-white/60 backdrop-blur-sm -z-10" />
 
       {user && <Navigation />}
 
-      <div className="relative container mx-auto px-4 py-14">
+      <div className="relative container mx-auto px-4 pt-28 md:pt-32 pb-16 mt-10">
+        {/* HÀNG NÚT QUAY VỀ */}
+        <div className="flex items-center justify-between mb-4">
+          <button
+            onClick={() => navigate(-1)}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/80 border border-gray-200 shadow-sm hover:bg-gray-100 hover:shadow-md transition-all"
+          >
+            <i className="ri-arrow-left-line text-gray-700" />
+            <span className="text-sm font-medium text-gray-700">
+              Quay về
+            </span>
+          </button>
+        </div>
+
         {/* HEADER */}
-        <div className="text-center mb-14">
-          <h1 className="text-4xl font-bold text-gray-900 mb-3">
-            Gửi lời chúc đến Đại hội
-          </h1>
-          <p className="text-gray-600 max-w-xl mx-auto">
+        <div className="text-center mb-12">
+          {/* LOGO ĐẠI HỘI CẮT TRÒN */}
+          <div className="flex justify-center mb-4">
+            <div className="relative">
+              <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full border-4 border-white shadow-2xl overflow-hidden bg-white">
+                <img
+                  src={congressLogo}
+                  alt="Logo Đại hội"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <div className="absolute inset-x-4 -bottom-2 h-2 bg-blue-400/40 rounded-full blur-md" />
+            </div>
+          </div>
+
+          <div className="inline-flex items-center gap-2 px-4 py-1 rounded-full bg-blue-50 border border-blue-100 text-xs font-semibold text-blue-700 mb-4">
+            <i className="ri-chat-heart-line text-sm" />
+            LỜI CHÚC GỬI ĐẾN ĐẠI HỘI
+          </div>
+
+          
+
+
+          <p className="text-gray-600 max-w-xl mx-auto text-sm sm:text-base mb-6">
             Những thông điệp yêu thương – tiếp thêm lửa cho Đại hội thành công.
           </p>
 
           <button
             onClick={() => setShowForm(true)}
-            className="mt-6 px-8 py-3 text-white bg-blue-600 rounded-full shadow-md hover:bg-blue-700 transition-all"
+            className="mt-2 px-8 py-3 text-white bg-blue-600 rounded-full shadow-md hover:bg-blue-700 hover:shadow-lg transition-all flex items-center justify-center mx-auto"
           >
             <i className="ri-heart-add-fill mr-2" />
             Gửi lời chúc ngay
@@ -211,14 +244,14 @@ const WishesPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setShowForm(false)}
-                    className="flex-1 py-2 bg-gray-100 rounded-lg hover:bg-gray-200"
+                    className="flex-1 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
                   >
                     Hủy
                   </button>
                   <button
                     type="submit"
                     disabled={submitting}
-                    className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60"
+                    className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
                   >
                     {submitting ? 'Đang gửi...' : 'Gửi lời chúc'}
                   </button>
@@ -240,7 +273,10 @@ const WishesPage: React.FC = () => {
           {loading ? (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="h-40 bg-white/60 rounded-xl animate-pulse" />
+                <div
+                  key={i}
+                  className="h-40 bg-white/80 rounded-xl animate-pulse border border-gray-200"
+                />
               ))}
             </div>
           ) : wishes.length ? (
@@ -248,7 +284,7 @@ const WishesPage: React.FC = () => {
               {wishes.map((w) => (
                 <div
                   key={w.id}
-                  className="bg-white/90 border border-gray-200 rounded-2xl p-6 shadow hover:shadow-lg transition-all"
+                  className="bg-white/95 border border-gray-200 rounded-2xl p-6 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all"
                 >
                   <div className="flex items-start gap-3 mb-4">
                     <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-2xl">
@@ -285,7 +321,7 @@ const WishesPage: React.FC = () => {
               </p>
               <button
                 onClick={() => setShowForm(true)}
-                className="px-6 py-2 bg-blue-600 text-white rounded-full hover:bg-blue-700"
+                className="px-6 py-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors"
               >
                 Viết lời chúc
               </button>

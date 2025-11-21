@@ -1,7 +1,7 @@
 // src/pages/checkin/CheckinPage.tsx
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom'; // Import createPortal
 import jsQR from 'jsqr';
-// [THAY ĐỔI] Đã xóa import Navigation
 import { Card } from '../../components/base/Card';
 import { Button } from '../../components/base/Button';
 import { useAuth } from '../../hooks/useAuth';
@@ -9,6 +9,7 @@ import { getSocket } from '../../utils/socket';
 import { checkinByQr, checkinManual } from '../../services/checkin';
 import { fetchDelegatesAll } from '../../services/delegates';
 import { useAutoAnimate } from '@formkit/auto-animate/react';
+import bg from '../../assets/image/WEB DISPLAY.png';
 
 const BOX_MIN = 'min-h-[16rem]';
 const BOX_MAX = 'max-h-[20rem]';
@@ -47,7 +48,6 @@ const normalizeDelegate = (d: any): UIDelegate => {
   };
 };
 
-// ===== Sort: đã điểm danh lên trước; trong nhóm đã điểm danh: mới nhất lên đầu; nhóm chưa: theo tên
 const sortDelegates = (a: UIDelegate, b: UIDelegate) => {
   if (a.checkedIn && !b.checkedIn) return -1;
   if (!a.checkedIn && b.checkedIn) return 1;
@@ -68,10 +68,8 @@ const RES_PRESETS: Record<PresetKey, { label: string; width?: number; height?: n
   vga: { label: '640×480',   width: 640,  height: 480 },
 };
 
-// ------- FIX type zoom capabilities ----------
 type ZoomRange = { min: number; max: number; step?: number };
 type ZoomCapabilities = MediaTrackCapabilities & { zoom?: ZoomRange };
-// ---------------------------------------------
 
 const CheckinPage: React.FC = () => {
   const { user } = useAuth();
@@ -120,7 +118,6 @@ const CheckinPage: React.FC = () => {
   // Item vừa di chuyển (để highlight + sweep)
   const [lastMovedId, setLastMovedId] = useState<string | number | null>(null);
 
-  // ==== Fullscreen Logic ====
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().catch((err) => {
@@ -143,14 +140,12 @@ const CheckinPage: React.FC = () => {
     };
   }, []);
 
-  // ==== Guards ====
   useEffect(() => {
     if (user && !['admin', 'department'].includes(user.role)) {
       window.history.back();
     }
   }, [user]);
 
-  // ==== Load delegates ====
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -170,7 +165,6 @@ const CheckinPage: React.FC = () => {
     return () => { mounted = false; };
   }, []);
 
-  // ==== Realtime sync ====
   useEffect(() => {
     const s = getSocket();
     const onUpdate = (evt: { delegateId: number | string; checkedIn: boolean; checkinTime?: string }) => {
@@ -190,7 +184,6 @@ const CheckinPage: React.FC = () => {
     return () => { s.off('checkin.updated', onUpdate); };
   }, []);
 
-  // ==== Camera list ====
   const listVideoInputs = async () => {
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
@@ -204,7 +197,6 @@ const CheckinPage: React.FC = () => {
   };
   useEffect(() => { listVideoInputs(); }, []);
 
-  // ==== Helpers ====
   const buildConstraints = () => {
     const p = RES_PRESETS[preset];
     const targetW = p.width;
@@ -277,7 +269,6 @@ const CheckinPage: React.FC = () => {
     rafRef.current = requestAnimationFrame(tick);
   };
 
-  // Zoom change
   const handleZoomChange = async (val: number) => {
     setZoom(val);
     try {
@@ -287,7 +278,6 @@ const CheckinPage: React.FC = () => {
     } catch { /* ignore */ }
   };
 
-  // ==== Scan loop (robust) ====
   const tryDecode = (
     video: HTMLVideoElement,
     baseCtx: CanvasRenderingContext2D,
@@ -352,7 +342,6 @@ const CheckinPage: React.FC = () => {
     next();
   };
 
-  // ==== Start/stop ====
   const startCamera = async () => {
     if (scanning) return;
     setScanning(true);
@@ -365,7 +354,6 @@ const CheckinPage: React.FC = () => {
     setScanning(false);
   };
 
-  // react to scanning toggle
   useEffect(() => {
     if (!scanning) return;
     startStream().catch((e) => {
@@ -377,27 +365,23 @@ const CheckinPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scanning]);
 
-  // restart stream when cam / preset changes
   useEffect(() => {
     if (scanning) startStream();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCam, preset]);
 
-  // ==== Cleanup ====
   useEffect(() => () => {
     stopCamera();
     if (toastTimerRef.current)  { clearTimeout(toastTimerRef.current);  toastTimerRef.current  = null; }
     if (resumeTimerRef.current) { clearTimeout(resumeTimerRef.current); resumeTimerRef.current = null; }
   }, []);
 
-  // ==== Toast helper ====
   const showToast = (message: string, type: 'success' | 'error' = 'error', ms = 3000) => {
     setToast({ type, message });
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     toastTimerRef.current = window.setTimeout(() => setToast(null), ms);
   };
 
-  // ==== Success handling ====
   const finishLocalUpdate = (d: any, autoResume = true) => {
     const ui = normalizeDelegate(d);
     const newCheckinTime = ui.checkinTime || new Date().toISOString();
@@ -428,7 +412,6 @@ const CheckinPage: React.FC = () => {
     setCheckedInDelegate(fullUpdatedDelegate);
     setShowSuccess(true);
 
-    // đánh dấu item vừa di chuyển (hiệu ứng bump + sweep)
     setLastMovedId(ui.id);
     window.setTimeout(() => setLastMovedId(null), 1800);
 
@@ -438,7 +421,6 @@ const CheckinPage: React.FC = () => {
     }
   };
 
-  // ==== API actions ====
   const handleQRCheckin = async (qrData: string) => {
     let success = false;
     try {
@@ -478,7 +460,6 @@ const CheckinPage: React.FC = () => {
     }
   };
 
-  // Form submit cho ô nhập mã đại biểu
   const handleManualCodeSubmit = (e?: React.FormEvent<HTMLFormElement>) => {
     if (e) e.preventDefault();
     const code = manualCode.trim();
@@ -514,7 +495,6 @@ const CheckinPage: React.FC = () => {
     }
   };
 
-  // ======= UI =======
   const total = delegates.length;
   const checked = delegates.filter(d => d.checkedIn).length;
   const rate = Math.round((checked / Math.max(total, 1)) * 100);
@@ -524,7 +504,7 @@ const CheckinPage: React.FC = () => {
     <div className="relative min-h-screen">
       
       <img
-        src="/BG Chuyen trang-01.png"
+        src={bg}
         alt="Background" 
         className="absolute inset-0 w-full h-full object-cover -z-20"
       />
@@ -558,25 +538,16 @@ const CheckinPage: React.FC = () => {
       `}</style>
       
       <div className="relative z-10">
-        {/* [THAY ĐỔI] Đã xóa <Navigation /> */}
-
         <div className="container mx-auto px-4 py-6 md:py-8">
-
-          {/* Nút Quay về Dashboard */}
           <div className="mb-4">
-            <a 
-              href="/dashboard" // <-- THAY ĐỔI ĐƯỜNG DẪN NÀY NẾU CẦN
-              className="inline-flex items-center text-sm font-medium text-gray-200 hover:text-white transition-colors"
-            >
+            <a href="/dashboard" className="inline-flex items-center text-sm font-medium text-gray-200 hover:text-white transition-colors">
               <i className="ri-arrow-left-s-line mr-1" />
               Quay về Dashboard
             </a>
           </div>
 
-          {/* Header */}
-          <div className="mb-6">
+          <div className="mb-6 ">
             <div className="flex-1 min-w-0">
-              
               <div className="flex justify-between items-center mb-2">
                 <div className="inline-flex items-center px-2 py-1 rounded-full bg-blue-50 text-blue-700 text-[11px] font-medium">
                   <i className="ri-qr-scan-line mr-1 text-xs" />
@@ -587,7 +558,7 @@ const CheckinPage: React.FC = () => {
                   <Button
                     variant="secondary"
                     onClick={toggleFullscreen}
-                    className="w-auto px-2.5"
+                    className="w-auto px-3"
                     aria-label={isFullscreen ? "Thoát toàn màn hình" : "Toàn màn hình"}
                   >
                     {isFullscreen ? (
@@ -636,7 +607,6 @@ const CheckinPage: React.FC = () => {
             </div>
           </div>
 
-          {/* QR + Manual */}
           <div className="grid lg:grid-cols-2 gap-6 lg:gap-8">
             {/* Quét QR */}
             <Card className="h-full">
@@ -677,7 +647,6 @@ const CheckinPage: React.FC = () => {
                     <div className={`relative rounded-2xl overflow-hidden shadow-2xl ring-1 ring-cyan-200 ${BOX_MIN} ${BOX_MAX}`}>
                       <video ref={videoRef} autoPlay playsInline muted className="w-full h-full bg-black object-cover" />
                       <canvas ref={canvasRef} className="hidden" />
-                      {/* Overlay: khung + beam */}
                       <div className="absolute inset-0 pointer-events-none">
                         <div className="absolute inset-6 rounded-xl border-2 border-cyan-400/80 shadow-[0_0_20px_rgba(34,211,238,0.35)]" />
                         <div className="absolute left-8 right-8 top-1/2 h-0.5 bg-white/60 animate-pulse" />
@@ -710,7 +679,6 @@ const CheckinPage: React.FC = () => {
                 Dùng khi QR bị lỗi hoặc không quét được. Nhập mã đại biểu hoặc chọn trực tiếp bên dưới.
               </p>
 
-              {/* Ô nhập mã đại biểu */}
               <form onSubmit={handleManualCodeSubmit} className="flex gap-2 mb-4">
                 <input
                   type="text"
@@ -724,7 +692,6 @@ const CheckinPage: React.FC = () => {
                 </Button>
               </form>
 
-              {/* Danh sách có auto-animate + moved highlight */}
               <div ref={parent} className="space-y-3 max-h-80 overflow-y-auto pr-1">
                 {delegates.map(d => {
                   const isMoved = lastMovedId != null && String(d.id) === String(lastMovedId);
@@ -782,12 +749,15 @@ const CheckinPage: React.FC = () => {
         </div>
       </div>
       
-      {/* --- PHẦN POPUP/MODAL/TOAST ĐỂ BÊN NGOÀI DIV NỘI DUNG --- */}
+      {/* [QUAN TRỌNG] SỬ DỤNG STYLE Z-INDEX MAX ĐỂ NẰM TRÊN CÙNG MỌI THỨ */}
       
       {/* Popup cài đặt camera */}
-      {showCamSettings && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-40 p-3">
-          <Card className="w-full max-w-md p-4 rounded-xl shadow-lg">
+      {showCamSettings && createPortal(
+        <div 
+          className="fixed inset-0 bg-black/60 flex items-center justify-center p-3 animate-fade-in"
+          style={{ zIndex: 999999 }}
+        >
+          <Card className="w-full max-w-md p-4 rounded-xl shadow-2xl transform transition-all">
             {/* Header */}
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-base font-semibold text-gray-800 flex items-center">
@@ -929,13 +899,17 @@ const CheckinPage: React.FC = () => {
               </div>
             </div>
           </Card>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* Success modal */}
-      {showSuccess && checkedInDelegate && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <Card className="w-full max-w-md text-center">
+      {/* Success modal (Cũng dùng Portal + ZIndex max) */}
+      {showSuccess && checkedInDelegate && createPortal(
+        <div 
+          className="fixed inset-0 bg-black/60 flex items-center justify-center p-4"
+          style={{ zIndex: 999999 }}
+        >
+          <Card className="w-full max-w-md text-center shadow-2xl transform transition-all">
             <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <i className="ri-check-line text-2xl text-green-600" />
             </div>
@@ -958,18 +932,23 @@ const CheckinPage: React.FC = () => {
             </div>
             <Button onClick={() => closeModal(true)} className="w-full">Tiếp tục</Button>
           </Card>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* Toast */}
-      {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
+      {/* Toast (Cũng dùng Portal + ZIndex max) */}
+      {toast && createPortal(
+        <div 
+          className="fixed bottom-6 left-1/2 -translate-x-1/2"
+          style={{ zIndex: 999999 }}
+        >
           <div className={`px-4 py-3 rounded-lg shadow border text-sm
             ${toast.type === 'error' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700'}
           `}>
             {toast.message}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
