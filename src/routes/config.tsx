@@ -18,6 +18,9 @@ const CongressInfoPage = lazy(() => import('../features/congress-info/page'));
 const CheckinDisplay = lazy(() => import ('../features/checkin/CheckinDisplay'))
 const HeroImagesPage = lazy(()=> import ('../features/hero-image/HeroImagesPage'))
 const AdminWishesPage = lazy(()=> import('../features/wishes/AdminWishesPage'))
+import { ProtectedRoute } from "./ProtectedRoute";
+
+
 // const NotFoundPage = lazy(() => import('../pages/NotFound'));
 
 const routes: RouteObject[] = [
@@ -31,11 +34,18 @@ const routes: RouteObject[] = [
   },
   {
     path: '/dashboard',
-    element: <DashboardPage />
+    element: 
+    <ProtectedRoute>
+       <DashboardPage />
+    </ProtectedRoute>
+   
   },
   {
     path: '/profile',
-    element: <ProfilePage />
+    element: <ProtectedRoute>
+          <ProfilePage />
+        </ProtectedRoute>
+   
   },
   {
     path: '/wishes',
@@ -43,34 +53,49 @@ const routes: RouteObject[] = [
   },
   {
     path: '/documents',
-    element: <DocumentsPage />
+    element:   
+      <ProtectedRoute>
+        <DocumentsPage />
+      </ProtectedRoute>
+    
   },
   {
     path: '/checkin',
-    element: <CheckinPage />
+    element: 
+    <ProtectedRoute>
+      <CheckinPage />
+    </ProtectedRoute>
+    
   },
   {
     path: '/statistics',
-    element: <StatisticsPage />
+    element: <ProtectedRoute>
+      <StatisticsPage />
+    </ProtectedRoute>
   },
   {
     path: '/manage',
-    element: <ManagePage />
-  },
-  {
-    path: '/congress-updates',
-    element: <CongressUpdatesPage />
+    element: <ProtectedRoute>
+      <ManagePage />
+    </ProtectedRoute>
   },
   {
     path: '/congress-info',
-    element: <CongressInfoPage />
+    element: <ProtectedRoute>
+      <CongressInfoPage />
+    </ProtectedRoute>
+    
   },
    {
     path: '/checkin-display',
-    element: <CheckinDisplay />
+    element: <ProtectedRoute>
+      <CheckinDisplay />
+    </ProtectedRoute>
   },{
     path: '/hero-images',
-    element: <HeroImagesPage />
+    element: <ProtectedRoute>
+      <HeroImagesPage />
+    </ProtectedRoute>
   },
   {
     path: '/admin/wishes',

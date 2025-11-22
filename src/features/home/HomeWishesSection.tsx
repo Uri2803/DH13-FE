@@ -103,6 +103,7 @@ const WishesSection: React.FC<WishesSectionProps> = ({
       className={`
         relative
         transform transition-all duration-1000
+        items-center justify-center
         ${isVisible ? 'translate-x-0 opacity-100' : '-translate-x-10 opacity-0'}
       `}
     >
@@ -261,7 +262,7 @@ const WishesSection: React.FC<WishesSectionProps> = ({
                 </div>
               ) : (
                 wishes.length > 0 && (
-                  <div className="text-center text-gray-400 text-sm py-4 italic">
+                  <div className="text-center text-gray-400 text-sm py-3 italic">
                     Gửi thêm lời chúc để thấy điều kỳ diệu!
                   </div>
                 )
@@ -272,7 +273,7 @@ const WishesSection: React.FC<WishesSectionProps> = ({
             <div className="text-center">
               {/* dynamic dots cho các lời chúc xoay */}
               {otherWishes.length > 1 && (
-                <div className="flex justify-center space-x-2 mb-6">
+                <div className="flex justify-center space-x-2 mb-2">
                   {otherWishes.map((w, idx) => (
                     <span
                       key={w.id ?? idx}
@@ -290,7 +291,7 @@ const WishesSection: React.FC<WishesSectionProps> = ({
                 </div>
               )}
 
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <div className="flex flex-col sm:flex-row gap-4 items-center justify-center">
                 <Link to="/wishes">
                   <button className="bg-gray-100 hover:bg-gray-200 text-gray-800 px-6 py-3 text-base sm:text-lg font-medium rounded-xl transition-all duration-300 shadow hover:shadow-md flex items-center justify-center">
                     <i className="ri-eye-line mr-2" />

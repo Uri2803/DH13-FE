@@ -67,19 +67,8 @@ export async function fetchWishes(options?: { onlyVerified?: boolean }): Promise
 export async function createWish(payload: CreateWishPayload): Promise<Wish> {
   try {
     const res: any = await api.post('/wishes', payload);
-    
-    // LOG ĐỂ DEBUG: Xem server thực sự trả về cái gì
-    console.log("Create Wish Response:", res);
-
-    // TRƯỜNG HỢP 1: Interceptor đã xử lý, res chính là object Wish
     if (res && (res.id || res.senderName)) return res;
-
-    // TRƯỜNG HỢP 2: Axios chuẩn, dữ liệu nằm trong .data
     if (res?.data) return res.data;
-
-    // TRƯỜNG HỢP 3: Server tạo thành công (200/201) nhưng body rỗng hoặc không đúng chuẩn
-    // Ta tự tạo object giả lập để frontend hiển thị ngay (Optimistic UI)
-    console.warn("Server không trả về body chuẩn, tạo object tạm thời.");
     return {
        ...payload,
        id: Date.now(), // ID tạm

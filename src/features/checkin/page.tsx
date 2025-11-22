@@ -539,20 +539,16 @@ const CheckinPage: React.FC = () => {
       
       <div className="relative z-10">
         <div className="container mx-auto px-4 py-6 md:py-8">
-          <div className="mb-4">
-            <a href="/dashboard" className="inline-flex items-center text-sm font-medium text-gray-200 hover:text-white transition-colors">
-              <i className="ri-arrow-left-s-line mr-1" />
-              Quay về Dashboard
-            </a>
-          </div>
-
-          <div className="mb-6 ">
-            <div className="flex-1 min-w-0">
-              <div className="flex justify-between items-center mb-2">
-                <div className="inline-flex items-center px-2 py-1 rounded-full bg-blue-50 text-blue-700 text-[11px] font-medium">
+          
+          <div className="mb-12 ">
+            <div className="flex-1 min-w-0 mb-12">
+              <div className="flex justify-between items-center mb-12">
+                <a href="/dashboard" className="inline-flex items-center text-sm font-medium text-gray-200 hover:text-white transition-colors">
+                <div className="mb-12 inline-flex items-center px-2 py-1 rounded-full bg-blue-50 text-blue-700 text-[11px] font-medium">
                   <i className="ri-qr-scan-line mr-1 text-xs" />
                   Hệ thống điểm danh Đại hội
                 </div>
+                </a>
                 
                 <div className="flex-shrink-0 md:ml-4">
                   <Button
@@ -570,11 +566,11 @@ const CheckinPage: React.FC = () => {
                 </div>
               </div>
               
-              <h1 className="text-2xl md:text-3xl font-bold text-gray-800 mb-1">
+              <h1 className="text-2xl md:text-3xl font-bold text-gray-800 mb-1 ">
                 Điểm danh đại biểu
               </h1>
               
-              <p className="text-gray-200 text-sm md:text-base mb-3">
+              <p className="text-gray-200 text-sm md:text-base">
                 Quét mã QR trên thẻ đại biểu hoặc nhập mã đại biểu để điểm danh thủ công.
               </p>
 

@@ -1,17 +1,15 @@
-import { useNavigate, type NavigateFunction } from "react-router-dom";
-import { useRoutes } from "react-router-dom";
+import { useNavigate, useRoutes, type NavigateFunction } from "react-router-dom";
 import { useEffect } from "react";
 import routes from "./config";
-import AuthRedirect from "../components/feature/AuthRedirect";
 
-let navigateResolver: (navigate: ReturnType<typeof useNavigate>) => void;
-
+let navigateResolver: (navigate: NavigateFunction) => void;
 declare global {
   interface Window {
-    REACT_APP_NAVIGATE: ReturnType<typeof useNavigate>;
+    REACT_APP_NAVIGATE: NavigateFunction;
   }
 }
 
+// Export Promise để các file ngoài component (axios, utils...) có thể dùng
 export const navigatePromise = new Promise<NavigateFunction>((resolve) => {
   navigateResolver = resolve;
 });
@@ -22,9 +20,10 @@ export function AppRoutes() {
 
   useEffect(() => {
     window.REACT_APP_NAVIGATE = navigate;
-    navigateResolver(window.REACT_APP_NAVIGATE);
+  
+    if (navigateResolver) {
+      navigateResolver(navigate);
+    }
   }, [navigate]);
-
-  // ✅ Bọc toàn bộ route bằng AuthRedirect
-  return <AuthRedirect>{element}</AuthRedirect>;
+  return element;
 }

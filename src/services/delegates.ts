@@ -20,7 +20,17 @@ export type DelegateRow = {
   email?: string | null;
   position?: string | null;
   achievements?: string | null;
+
+  // ===== các field nâng cao từ delegateInfo =====
+  religion?: string | null;
+  ethnicity?: string | null;
+  joinUnionDate?: string | null;
+  joinAssociationDate?: string | null;
+  studentYear?: number | null;
+  academicScore?: number | null;
+  shirtSize?: string | null;
 };
+
 
 const toRow = (u: any): DelegateRow | null => {
   const di = u?.delegateInfo ?? {};
@@ -45,8 +55,24 @@ const toRow = (u: any): DelegateRow | null => {
     email: di?.email ?? u?.email ?? null,
     position: di?.position ?? null,
     achievements: di?.achievements ?? null,
+
+    // ===== bổ sung các field nâng cao =====
+    religion: di?.religion ?? null,
+    ethnicity: di?.ethnicity ?? null,
+    joinUnionDate: di?.joinUnionDate ?? null,
+    joinAssociationDate: di?.joinAssociationDate ?? null,
+    studentYear:
+      di?.studentYear !== undefined && di?.studentYear !== null
+        ? Number(di.studentYear)
+        : null,
+    academicScore:
+      di?.academicScore !== undefined && di?.academicScore !== null
+        ? Number(di.academicScore)
+        : null,
+    shirtSize: di?.shirtSize ?? null,
   };
 };
+
 
 /** ADMIN: lấy tất cả đại biểu */
 export async function fetchDelegatesAll(): Promise<DelegateRow[]> {

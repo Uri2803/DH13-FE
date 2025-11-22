@@ -1,4 +1,4 @@
-// src/pages/profile/ProfilePage.tsx
+
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import Cropper from 'react-easy-crop';
 import { Point, Area } from 'react-easy-crop';
@@ -178,18 +178,17 @@ const ProfilePage: React.FC = () => {
     }
   };
 
-  // 2. Cắt ảnh hiện tại -> Tải ảnh về Blob -> Mở Modal
-  const handleEditCurrentAvatar = async (e?: React.MouseEvent) => {
-    if(e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
+  // 2. [FIX QUAN TRỌNG] Cắt ảnh hiện tại -> Tải ảnh về Blob -> Mở Modal
+  const handleEditCurrentAvatar = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation(); // Chặn sự kiện click lan ra ngoài
 
-    if (!delegate?.avatarUrl || avatarUploading) return;
+    if (!delegate?.avatarUrl) return;
 
     try {
-      setAvatarUploading(true);
+      setAvatarUploading(true); // Hiện loading giả để báo đang xử lý
       
+      // Dùng fetch để tải ảnh về dưới dạng Blob (tránh lỗi canvas trực tiếp)
       const response = await fetch(delegate.avatarUrl, { mode: 'cors' });
       
       if (!response.ok) throw new Error('Không tải được ảnh từ server');
@@ -197,7 +196,7 @@ const ProfilePage: React.FC = () => {
       const blob = await response.blob();
       const objectUrl = URL.createObjectURL(blob);
 
-      setImageSrc(objectUrl);
+      setImageSrc(objectUrl); // Dùng URL nội bộ này sẽ an toàn hơn
       setCrop({ x: 0, y: 0 });
       setZoom(1);
       setIsCropping(true);
@@ -253,7 +252,7 @@ const ProfilePage: React.FC = () => {
     setZoom(1);
   };
 
-  // Logic Password
+  // Logic Password (giữ nguyên)
   const handlePasswordChange = (field: keyof typeof passwordForm, value: string) => {
     setPasswordForm((prev) => ({ ...prev, [field]: value }));
   };
@@ -289,10 +288,9 @@ const ProfilePage: React.FC = () => {
         </div>
 
         <div className="grid lg:grid-cols-3 gap-8">
-          {/* ============ CỘT TRÁI: AVATAR & THÔNG TIN CƠ BẢN ============ */}
           <Card>
-            <div className="flex flex-col items-center">
-              {/* Input ẩn để chọn file */}
+            <div className="text-center">
+              {/* INPUT ẨN HOÀN TOÀN */}
               <input 
                 type="file" 
                 id="avatar-upload-input"
@@ -302,78 +300,54 @@ const ProfilePage: React.FC = () => {
                 ref={fileInputRef}
               />
 
-              {/* KHUNG CHỨA AVATAR VÀ NÚT CAMERA */}
-              <div className="relative mb-4">
-                
-                {/* 1. HÌNH TRÒN AVATAR (CLICK ĐỂ CROP) */}
-                <div 
-                  className="h-32 w-32 overflow-hidden rounded-full border-4 border-white shadow-lg bg-gray-100 relative group cursor-pointer"
-                  onClick={delegate.avatarUrl ? handleEditCurrentAvatar : () => fileInputRef.current?.click()}
-                  title={delegate.avatarUrl ? "Nhấn để căn chỉnh ảnh" : "Nhấn để tải ảnh mới"}
-                >
+              {/* KHUNG AVATAR */}
+              <div className="relative mx-auto mb-4 h-28 w-28 group">
+                <div className="h-full w-full overflow-hidden rounded-full border-4 border-blue-100 bg-blue-50 flex items-center justify-center relative z-0">
                   {delegate.avatarUrl ? (
-                    <>
-                      <img 
-                        src={delegate.avatarUrl} 
-                        alt="Avatar" 
-                        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" 
-                      />
-                      {/* Lớp phủ khi rê chuột vào ảnh: Hiện icon sửa */}
-                      <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <i className="ri-crop-2-line text-white text-2xl drop-shadow-md"></i>
-                      </div>
-                    </>
+                    <img src={delegate.avatarUrl} alt="Avatar" className="h-full w-full object-cover" />
                   ) : (
-                    <div className="h-full w-full flex items-center justify-center bg-blue-50 text-blue-300">
-                      <i className="ri-user-fill text-6xl" />
-                    </div>
+                    <i className="ri-user-line text-4xl text-blue-500" />
                   )}
                 </div>
 
-                {/* 2. NÚT CAMERA NHỎ (GÓC DƯỚI PHẢI - ĐỂ UPLOAD) */}
+                {/* NÚT 1: CAMERA (LABEL) -> Kích hoạt input ẩn */}
                 <label 
                   htmlFor="avatar-upload-input"
-                  className="absolute bottom-0 right-0 transform translate-y-1 -translate-x-1 cursor-pointer bg-white text-gray-600 hover:text-blue-600 hover:bg-blue-50 border border-gray-200 h-9 w-9 rounded-full flex items-center justify-center shadow-md transition-all z-10"
-                  title="Tải ảnh mới từ thiết bị"
-                  onClick={(e) => e.stopPropagation()} // Chặn click xuyên qua gây mở crop
+                  className="absolute bottom-0 right-0 inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-blue-600 text-white shadow-md hover:bg-blue-700 transition-colors z-10"
+                  title="Tải ảnh mới"
                 >
-                  {avatarUploading ? <i className="ri-loader-4-line animate-spin text-sm"/> : <i className="ri-camera-fill text-lg"/>}
+                  <i className="ri-camera-line text-lg" />
                 </label>
+
+                {/* NÚT 2: CROP (BUTTON) -> Kích hoạt hàm handleEditCurrentAvatar */}
+                {delegate.avatarUrl && !avatarUploading && (
+                  <button
+                    type="button" 
+                    onClick={handleEditCurrentAvatar}
+                    className="absolute top-0 right-0 -mt-1 -mr-1 h-8 w-8 bg-white text-gray-700 rounded-full shadow-sm border border-gray-200 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-gray-100 hover:text-blue-600 z-20"
+                    title="Căn chỉnh lại ảnh hiện tại"
+                  >
+                    <i className="ri-crop-line text-lg pointer-events-none"></i>
+                  </button>
+                )}
               </div>
 
-              {/* Thông báo trạng thái */}
-              <div className="w-full text-center px-2">
-                 {avatarError && <div className="mb-3 text-xs text-red-600 bg-red-50 p-2 rounded border border-red-100">{avatarError}</div>}
-                 {avatarSuccess && <div className="mb-3 text-xs text-green-600 bg-green-50 p-2 rounded border border-green-100">{avatarSuccess}</div>}
-              </div>
+              {avatarUploading && <div className="mb-2 text-xs text-blue-600 font-medium"><i className="ri-loader-4-line animate-spin mr-1" /> Đang xử lý...</div>}
+              {avatarError && <div className="mb-2 text-xs text-red-600 bg-red-50 p-2 rounded">{avatarError}</div>}
+              {avatarSuccess && <div className="mb-2 text-xs text-green-600 bg-green-50 p-2 rounded">{avatarSuccess}</div>}
 
-              {/* Thông tin text bên dưới */}
-              <div className="text-center w-full border-t pt-5 mt-2">
-                <h2 className="text-xl font-bold text-gray-800 leading-tight mb-1">{delegate.fullName || '-'}</h2>
-                <p className="text-sm font-medium text-blue-600 bg-blue-50 inline-block px-3 py-0.5 rounded-full mb-3">
-                  {delegate.delegateCode || 'Chưa có mã'}
-                </p>
-                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-4">{delegate.position || 'Đại biểu'}</p>
-                
-                <div className="space-y-3 text-sm text-gray-600 text-left px-2 bg-gray-50 p-3 rounded-lg">
-                    <div className="flex items-start gap-3">
-                      <i className="ri-building-line text-gray-400 mt-0.5" /> 
-                      <span className="flex-1">{delegate.unit || '-'}</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <i className="ri-phone-line text-gray-400" /> 
-                      <span>{delegate.phone || '-'}</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <i className="ri-mail-line text-gray-400" /> 
-                      <span className="truncate">{delegate.email || '-'}</span>
-                    </div>
-                </div>
+              <h2 className="text-xl font-semibold text-gray-800">{delegate.fullName || '-'}</h2>
+              <p className="text-sm text-gray-600">{delegate.delegateCode || '-'}</p>
+              <p className="mb-4 text-xs text-gray-500">{delegate.position || '-'}</p>
+
+              <div className="space-y-2 text-sm text-gray-600">
+                 <div className="flex items-center justify-center gap-2"><i className="ri-building-line text-gray-400" /> {delegate.unit || '-'}</div>
+                 <div className="flex items-center justify-center gap-2"><i className="ri-phone-line text-gray-400" /> {delegate.phone || '-'}</div>
+                 <div className="flex items-center justify-center gap-2"><i className="ri-mail-line text-gray-400" /> {delegate.email || '-'}</div>
               </div>
             </div>
           </Card>
 
-          {/* ============ CỘT PHẢI: CHI TIẾT & PASSWORD ============ */}
           <div className="space-y-6 lg:col-span-2">
              <Card>
               <h3 className="mb-4 flex items-center text-lg font-semibold"><i className="ri-user-settings-line mr-2 text-blue-500" /> Thông tin cá nhân</h3>
@@ -413,7 +387,6 @@ const ProfilePage: React.FC = () => {
         </div>
       </div>
 
-      {/* ============ MODAL CROP IMAGE (POPUP) ============ */}
       {isCropping && imageSrc && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" style={{zIndex: 9999}}>
           <div className="bg-white w-full max-w-md rounded-xl overflow-hidden shadow-2xl animate-fade-in-up">

@@ -1,3 +1,4 @@
+// src/pages/wishes/WishesPage.tsx
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Navigation } from '../../components/feature/Navigation';
@@ -6,6 +7,9 @@ import { fetchWishes, createWish, Wish } from '../../services/wishes';
 
 import bgImage from '../../assets/image/nendaihoi.png';          // ẢNH NỀN
 import congressLogo from '../../assets/image/1. Ava ĐH XIII.png'; // LOGO ĐẠI HỘI (cắt tròn)
+
+// 👉 THÊM
+import { toast } from 'react-toastify';
 
 const WishesPage: React.FC = () => {
   const { user } = useAuth();
@@ -19,6 +23,7 @@ const WishesPage: React.FC = () => {
   const displayName = u.fullName || u.name || '';
   const displayDept = u.department?.name || '';
   const displayPosition = u.delegateInfo?.position || '';
+  const displayAvatar = u.ava || null; // URL avatar của đại biểu (tuỳ backend)
 
   const buildInitialFormData = () => ({
     senderName: displayName,
@@ -28,6 +33,7 @@ const WishesPage: React.FC = () => {
         }`
       : displayDept,
     content: '',
+    senderAvatar: displayAvatar,
   });
 
   const [formData, setFormData] = useState(buildInitialFormData);
@@ -56,8 +62,11 @@ const WishesPage: React.FC = () => {
           });
 
         setWishes(filtered);
-      } catch {
+      } catch (err) {
+        console.error('Không thể tải dữ liệu lời chúc:', err);
         setError('Không thể tải dữ liệu lời chúc.');
+        // 👉 THÔNG BÁO TOAST LỖI
+        toast.error('Không thể tải dữ liệu lời chúc. Vui lòng thử lại sau.');
       } finally {
         setLoading(false);
       }
@@ -75,7 +84,8 @@ const WishesPage: React.FC = () => {
     e.preventDefault();
 
     if (!formData.senderName.trim() || !formData.content.trim()) {
-      alert('Vui lòng điền đầy đủ.');
+      // 👉 DÙNG TOAST THAY CHO alert
+      toast.warn('Vui lòng điền đầy đủ tên và nội dung lời chúc.');
       return;
     }
 
@@ -93,11 +103,16 @@ const WishesPage: React.FC = () => {
       setFormData(buildInitialFormData());
       setShowForm(false);
 
-      alert(
-        newWish?.isVerified
-          ? 'Lời chúc đã được hiển thị!'
-          : 'Lời chúc đã gửi và chờ xét duyệt.',
-      );
+      // 👉 THÔNG BÁO THÀNH CÔNG
+      if (newWish?.isVerified) {
+        toast.success('Lời chúc đã được hiển thị trên trang!');
+      } else {
+        toast.info('Lời chúc đã gửi và đang chờ xét duyệt.');
+      }
+    } catch (err) {
+      console.error('Lỗi gửi lời chúc:', err);
+      // 👉 THÔNG BÁO LỖI
+      toast.error('Gửi lời chúc thất bại. Vui lòng thử lại sau.');
     } finally {
       setSubmitting(false);
     }
@@ -114,18 +129,16 @@ const WishesPage: React.FC = () => {
   return (
     <div className="relative min-h-screen bg-gray-50 overflow-hidden">
       {/* Background Image */}
+      
       <img
         src={bgImage}
         alt="bg"
         className="fixed inset-0 w-full h-full object-cover opacity-40 -z-20"
       />
+       {user && <Navigation />}
+     
 
-      {/* Overlay mờ cho dễ đọc */}
-      <div className="fixed inset-0 bg-white/60 backdrop-blur-sm -z-10" />
-
-      {user && <Navigation />}
-
-      <div className="relative container mx-auto px-4 pt-28 md:pt-32 pb-16 mt-10">
+      <div className="relative container mx-auto px-4 pt-28 md:pt-32 pb-16">
         {/* HÀNG NÚT QUAY VỀ */}
         <div className="flex items-center justify-between mb-4">
           <button
@@ -159,9 +172,6 @@ const WishesPage: React.FC = () => {
             <i className="ri-chat-heart-line text-sm" />
             LỜI CHÚC GỬI ĐẾN ĐẠI HỘI
           </div>
-
-          
-
 
           <p className="text-gray-600 max-w-xl mx-auto text-sm sm:text-base mb-6">
             Những thông điệp yêu thương – tiếp thêm lửa cho Đại hội thành công.
@@ -261,7 +271,7 @@ const WishesPage: React.FC = () => {
           </div>
         )}
 
-        {/* ERROR */}
+        {/* ERROR (vẫn giữ, ngoài toast) */}
         {error && (
           <div className="text-center text-red-600 mb-6 font-medium">
             {error}

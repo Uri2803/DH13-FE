@@ -44,3 +44,8 @@ export async function checkinByQr(raw: string): Promise<any>{
   const data = await api.post<CheckinResponse>('/checkin/qr', { token: raw });
   return data
 }
+
+export const resetCheckin = async (): Promise<any> => {
+  const res: any = await api.get('/user/resetchecin');
+  return res?.data ?? res;
+};

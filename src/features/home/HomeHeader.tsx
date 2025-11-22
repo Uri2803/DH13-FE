@@ -41,7 +41,7 @@ const HomeHeader: React.FC<HomeHeaderProps> = ({ isVisible }) => {
 
           {/* Dòng HỘI SINH VIÊN VIỆT NAM */}
           <h1
-            className="px-2 text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-3 sm:mb-4 
+            className="px-2 text-2xl sm:text-3xl md:text-5xl lg:text-6xl font-bold mb-3 sm:mb-4 
                          bg-gradient-to-r from-white via-cyan-100 to-white bg-clip-text 
                          text-transparent leading-tight drop-shadow-lg"
           >

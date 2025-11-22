@@ -12,15 +12,20 @@ const Navigation: React.FC = () => {
   const isAdmin = user?.role === 'admin';
   const displayName = user?.name || user?.code || 'Khách';
 
-  const handleLogout = async () => {
-    try {
-      if (typeof logout === 'function') await logout();
-    } finally {
-      setIsUserMenuOpen(false);
-      setIsMobileOpen(false);
-      navigate('/');
-    }
-  };
+  const handleLogout = () => { // Bỏ async ở đây cũng được
+    // 1. Đóng UI
+    setIsUserMenuOpen(false);
+    setIsMobileOpen(false);
+
+    // 2. Chuyển trang về Home TRƯỚC
+    // Thêm replace: true để xóa lịch sử lùi lại trang dashboard
+    navigate('/', { replace: true });
+
+    // 3. Đợi 1 chút (0ms) cho việc chuyển trang hoàn tất rồi mới gọi hàm logout
+    setTimeout(async () => {
+        await logout(); // Hàm này chứa setUser(null)
+    }, 0);
+};
 
   // Close user dropdown when clicking outside or pressing ESC
   useEffect(() => {
@@ -53,7 +58,7 @@ const Navigation: React.FC = () => {
             <div className="w-12 h-12 bg-blue-500 rounded-full overflow-hidden flex items-center justify-center shadow-md">
               <img src="/logo-square.png" alt="Logo HSV" className="rounded-full w-10 h-10 object-cover" />
             </div>
-            <span className="text-xl font-bold text-gray-800">Đại hội Hội sinh viên</span>
+            <span className="text-lg font-bold text-gray-800">Đại hội Hội sinh viên</span>
           </Link>
 
           {/* Desktop Menu */}
@@ -61,14 +66,8 @@ const Navigation: React.FC = () => {
             <Link to="/wishes" className="text-gray-600 hover:text-blue-600 transition-colors">
               <i className="ri-heart-line mr-1"></i> Lời chúc
             </Link>
-            <Link to="/congress-updates" className="text-gray-600 hover:text-blue-600 transition-colors">
-              <i className="ri-calendar-event-line mr-1"></i> Diễn biến
-            </Link>
             {isAdmin && (
               <>
-                <Link to="/congress-info" className="text-gray-600 hover:text-blue-600 transition-colors">
-                  <i className="ri-information-line mr-1"></i> Thông tin ĐH
-                </Link>
                 <Link to="/manage" className="text-gray-600 hover:text-blue-600 transition-colors">
                   <i className="ri-settings-line mr-1"></i> Quản lý
                 </Link>
@@ -153,14 +152,8 @@ const Navigation: React.FC = () => {
               <Link to="/wishes" className="text-gray-600 hover:text-blue-600 py-2" onClick={() => setIsMobileOpen(false)}>
                 <i className="ri-heart-line mr-2"></i> Lời chúc
               </Link>
-              <Link to="/congress-updates" className="text-gray-600 hover:text-blue-600 py-2" onClick={() => setIsMobileOpen(false)}>
-                <i className="ri-calendar-event-line mr-2"></i> Diễn biến
-              </Link>
               {isAdmin && (
                 <>
-                  <Link to="/congress-info" className="text-gray-600 hover:text-blue-600 py-2" onClick={() => setIsMobileOpen(false)}>
-                    <i className="ri-information-line mr-2"></i> Thông tin ĐH
-                  </Link>
                   <Link to="/manage" className="text-gray-600 hover:text-blue-600 py-2" onClick={() => setIsMobileOpen(false)}>
                     <i className="ri-settings-line mr-2"></i> Quản lý
                   </Link>

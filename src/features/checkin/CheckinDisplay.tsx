@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { getSocket } from '../../utils/socket';
 import { fetchDelegatesAll, fetchDelegateById } from '../../services/delegates';
-import bg from '../../assets/image/WEB DISPLAY.png'
-// ✅ Helper đọc giọng fallback nếu cần
+import bg from '../../assets/image/WEB DISPLAY.png';
+
+// ✅ Fallback đọc giọng đơn giản
 const basicSpeak = (text: string) => {
   try {
     const u = new SpeechSynthesisUtterance(text);
@@ -26,7 +27,6 @@ interface CheckinData {
   ava?: string | null;
   checkedIn?: boolean;
   checkinTime?: string | null;
-
 }
 
 const normalizeDelegate = (d: any): CheckinData => {
@@ -51,22 +51,31 @@ const HIDE_AFTER_MS = 10000;
 
 const CheckinDisplay: React.FC = () => {
   const [current, setCurrent] = useState<CheckinData | null>(null);
-  const [connected, setConnected] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
+  const [connected, setConnected] =
+    useState<'connecting' | 'connected' | 'disconnected'>('connecting');
   const [mute, setMute] = useState(false);
-  const [ttsReady, setTtsReady] = useState(false);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoiceId, setSelectedVoiceId] = useState<string>('auto');
   const [recentCheckins, setRecentCheckins] = useState<CheckinData[]>([]);
+  const [audioUnlocked, setAudioUnlocked] = useState(false); // ⭐ phải bật 1 lần
 
   const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
   const muteRef = useRef(mute);
-  const ttsReadyRef = useRef(ttsReady);
-  const lastShownRef = useRef<{ id?: string; at: number }>({ id: undefined, at: 0 });
+  const lastShownRef = useRef<{ id?: string; at: number }>({
+    id: undefined,
+    at: 0,
+  });
   const hideTimerRef = useRef<number | null>(null);
-  const pendingSpeechRef = useRef<string | null>(null);
+  const lastUtterRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const unlockedRef = useRef(audioUnlocked);
 
-  useEffect(() => { muteRef.current = mute; }, [mute]);
-  useEffect(() => { ttsReadyRef.current = ttsReady; }, [ttsReady]);
+  useEffect(() => {
+    muteRef.current = mute;
+  }, [mute]);
+
+  useEffect(() => {
+    unlockedRef.current = audioUnlocked;
+  }, [audioUnlocked]);
 
   const ensureVoices = (): SpeechSynthesisVoice[] => {
     const v = window.speechSynthesis?.getVoices?.() || [];
@@ -74,55 +83,53 @@ const CheckinDisplay: React.FC = () => {
     return v;
   };
 
+  const pickBestVoice = (list: SpeechSynthesisVoice[]) => {
+    if (!list.length) return null;
+    const viVoices = list.filter(v =>
+      /vi|Viet/i.test((v.lang || '') + (v.name || '')),
+    );
+
+    const pool = viVoices.length ? viVoices : list;
+
+    // ⭐ ưu tiên giọng "hay hơn" (tên chứa các từ này nếu có)
+    const preferred =
+      pool.find(v =>
+        /google|natural|female|fpt|vbee/i.test(v.name || ''),
+      ) || pool[0];
+
+    return preferred || null;
+  };
+
   const speak = (text: string) => {
-    if (muteRef.current || !ttsReadyRef.current || !('speechSynthesis' in window)) return;
+    // ✅ Chỉ chặn khi tắt tiếng, chưa unlock, hoặc không có speechSynthesis
+    if (muteRef.current || !unlockedRef.current || !('speechSynthesis' in window)) return;
+
     try {
       if (!voiceRef.current) {
         const list = ensureVoices();
-        const vi = list.find(v => /vi|Viet/i.test((v.lang || '') + (v.name || '')));
-        voiceRef.current = vi || list[0] || null;
+        const chosen = pickBestVoice(list);
+        if (chosen) voiceRef.current = chosen;
       }
+
       const u = new SpeechSynthesisUtterance(text);
       if (voiceRef.current) u.voice = voiceRef.current;
       u.lang = voiceRef.current?.lang || 'vi-VN';
       u.rate = 1;
       u.pitch = 1;
       u.volume = 1;
+
+      // ⭐ giữ reference, tránh GC trước khi nói xong
+      lastUtterRef.current = u;
+      (window as any).__lastTTS = u;
+
       window.speechSynthesis.cancel();
       u.onerror = e => console.warn('TTS error:', e);
       window.speechSynthesis.speak(u);
       if (navigator.vibrate) navigator.vibrate(40);
     } catch (e) {
       console.warn('TTS speak exception:', e);
+      basicSpeak(text);
     }
-  };
-
-  const enableAudio = () => {
-    if (!('speechSynthesis' in window)) {
-      setTtsReady(true);
-      return;
-    }
-    const list = ensureVoices();
-    setVoices(list);
-    const vi = list.find(v => /vi|Viet/i.test((v.lang || '') + (v.name || '')));
-    voiceRef.current = vi || list[0] || null;
-
-    const u = new SpeechSynthesisUtterance('Âm thanh đã được bật');
-    if (voiceRef.current) u.voice = voiceRef.current;
-    u.lang = voiceRef.current?.lang || 'vi-VN';
-    u.rate = 1;
-    u.onstart = () => {
-      setTtsReady(true);
-      if (pendingSpeechRef.current) {
-        const text = pendingSpeechRef.current;
-        pendingSpeechRef.current = null;
-        speak(text);
-      }
-    };
-    const fallback = window.setTimeout(() => setTtsReady(true), 1200);
-    u.onend = () => { window.clearTimeout(fallback); };
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(u);
   };
 
   // 🟡 Lấy danh sách voice + cho phép chọn giọng
@@ -141,8 +148,7 @@ const CheckinDisplay: React.FC = () => {
       }
 
       if (!chosen) {
-        const vi = list.find(v => /vi|Viet/i.test((v.lang || '') + (v.name || '')));
-        chosen = vi || list[0] || null;
+        chosen = pickBestVoice(list);
       }
 
       voiceRef.current = chosen;
@@ -155,24 +161,22 @@ const CheckinDisplay: React.FC = () => {
     };
   }, [selectedVoiceId]);
 
-  // yêu cầu user tương tác lần đầu để bật âm thanh
-  useEffect(() => {
-    const once = () => { if (!ttsReadyRef.current) enableAudio(); };
-    window.addEventListener('pointerdown', once, { once: true });
-    return () => window.removeEventListener('pointerdown', once);
-  }, []);
-
   // anti-suspend cho SpeechSynthesis
   useEffect(() => {
     const id = window.setInterval(() => {
-      try { window.speechSynthesis.resume(); } catch {}
+      try {
+        window.speechSynthesis.resume();
+      } catch {}
     }, 3000);
     return () => window.clearInterval(id);
   }, []);
 
   const scheduleHide = () => {
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-    hideTimerRef.current = window.setTimeout(() => setCurrent(null), HIDE_AFTER_MS);
+    hideTimerRef.current = window.setTimeout(
+      () => setCurrent(null),
+      HIDE_AFTER_MS,
+    );
   };
 
   // 🟢 Fetch danh sách ban đầu
@@ -183,8 +187,10 @@ const CheckinDisplay: React.FC = () => {
         const list = (all || [])
           .map(normalizeDelegate)
           .filter(x => x.checkedIn && x.checkinTime)
-          .sort((a, b) =>
-            new Date(b.checkinTime || 0).getTime() - new Date(a.checkinTime || 0).getTime()
+          .sort(
+            (a, b) =>
+              new Date(b.checkinTime || 0).getTime() -
+              new Date(a.checkinTime || 0).getTime(),
           );
         setRecentCheckins(list);
         if (list.length > 0) {
@@ -196,7 +202,9 @@ const CheckinDisplay: React.FC = () => {
         console.error('Không tải được danh sách.', e);
       }
     })();
-    return () => { if (hideTimerRef.current) clearTimeout(hideTimerRef.current); };
+    return () => {
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    };
   }, []);
 
   // 🟢 Socket: checkin.updated
@@ -206,25 +214,42 @@ const CheckinDisplay: React.FC = () => {
     const onConnect = () => setConnected('connected');
     const onDisconnect = () => setConnected('disconnected');
 
-    const onUpdate = async (evt: { delegateId: number; checkedIn: boolean; checkinTime?: string }) => {
+    const onUpdate = async (evt: {
+      delegateId: number;
+      checkedIn: boolean;
+      checkinTime?: string;
+    }) => {
       if (!evt.checkedIn) return;
       const now = Date.now();
-      if (lastShownRef.current.id === String(evt.delegateId)
-        && (now - lastShownRef.current.at) < DUP_WINDOW_MS) return;
+      if (
+        lastShownRef.current.id === String(evt.delegateId) &&
+        now - lastShownRef.current.at < DUP_WINDOW_MS
+      )
+        return;
       try {
         let raw: any = null;
-        try { raw = await fetchDelegateById(evt.delegateId); } catch {}
+        try {
+          raw = await fetchDelegateById(evt.delegateId);
+        } catch {}
         const d = normalizeDelegate(raw?.item ?? raw ?? { id: evt.delegateId });
-        d.checkinTime = d.checkinTime || evt.checkinTime || new Date().toISOString();
+        d.checkinTime =
+          d.checkinTime || evt.checkinTime || new Date().toISOString();
         setCurrent(d);
         lastShownRef.current = { id: String(d.id), at: Date.now() };
-        setRecentCheckins(prev => [d, ...prev.filter(x => String(x.id) !== String(d.id))]);
+        setRecentCheckins(prev => [
+          d,
+          ...prev.filter(x => String(x.id) !== String(d.id)),
+        ]);
         scheduleHide();
+
         const sentence = d.fullName
-          ? `Chào mừng đại biểu ${d.fullName}${d.unit ? `, ${d.unit}` : ''}`
+          ? `Chào mừng đại biểu ${d.fullName}${
+              d.unit ? `, ${d.unit}` : ''
+            }`
           : 'Điểm danh thành công.';
-        if (!ttsReadyRef.current) pendingSpeechRef.current = sentence;
-        else speak(sentence);
+
+        // ✅ GỌI THẲNG, nhưng sẽ bị chặn nếu chưa unlock (audioUnlocked = false)
+        speak(sentence);
       } catch (e) {
         console.error('Lỗi xử lý socket', e);
       }
@@ -246,16 +271,48 @@ const CheckinDisplay: React.FC = () => {
     else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
   };
 
-  const viVoices = voices.filter(v => /vi|Viet/i.test((v.lang || '') + (v.name || '')));
+  const viVoices = voices.filter(v =>
+    /vi|Viet/i.test((v.lang || '') + (v.name || '')),
+  );
   const displayVoices = viVoices.length ? viVoices : voices;
+
+  // ⭐ Overlay: user phải click để bật âm thanh (unlock autoplay policy)
+  const handleUnlockAudio = () => {
+    setAudioUnlocked(true);
+    try {
+      if (!('speechSynthesis' in window)) return;
+      const list = ensureVoices();
+      const chosen = pickBestVoice(list);
+      if (chosen) voiceRef.current = chosen;
+
+      const u = new SpeechSynthesisUtterance(
+        'Hệ thống điểm danh đại biểu đã sẵn sàng.',
+      );
+      if (voiceRef.current) u.voice = voiceRef.current;
+      u.lang = voiceRef.current?.lang || 'vi-VN';
+      u.rate = 1;
+
+      lastUtterRef.current = u;
+      (window as any).__lastTTS = u;
+
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(u);
+    } catch (e) {
+      console.warn('Unlock audio error:', e);
+    }
+  };
 
   return (
     <div className="relative min-h-screen w-full overflow-hidden">
-      <img src={bg} alt="" className="absolute inset-0 w-full h-full object-cover" />
+      <img
+        src={bg}
+        alt=""
+        className="absolute inset-0 w-full h-full object-cover"
+      />
       <div className="absolute inset-0 bg-black/10 pointer-events-none" />
 
       {/* Header */}
-      <div className="relative  px-6 py-4 flex items-center justify-between  border-white/20 text-white">
+      <div className="relative px-6 py-4 flex items-center justify-between text-white mb-12">
         <div className="flex items-center gap-3 text-xl font-semibold">
           <span
             className={`h-3 w-3 rounded-full ${
@@ -280,7 +337,7 @@ const CheckinDisplay: React.FC = () => {
           {displayVoices.length > 0 && (
             <select
               value={selectedVoiceId}
-              onChange={(e) => setSelectedVoiceId(e.target.value)}
+              onChange={e => setSelectedVoiceId(e.target.value)}
               className="px-3 py-2 rounded-xl bg-white/90 text-gray-800 text-sm border border-white/40"
             >
               <option value="auto">Giọng tự động</option>
@@ -290,15 +347,6 @@ const CheckinDisplay: React.FC = () => {
                 </option>
               ))}
             </select>
-          )}
-
-          {!ttsReady && (
-            <button
-              onClick={enableAudio}
-              className="px-4 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 transition"
-            >
-              Bật âm thanh
-            </button>
           )}
 
           <button
@@ -318,14 +366,14 @@ const CheckinDisplay: React.FC = () => {
       </div>
 
       {/* Nội dung hiển thị */}
-      <div className="relative z-10 px-4 py-20">
+      <div className="relative z-10 px-4 pb-16 pt-4 flex justify-center items-start md:items-center mt-12">
         {current && (
-          <div className="max-w-4xl mx-auto bg-white/95 rounded-3xl shadow-xl p-10 text-center">
+          <div className="mt-10 md:mt-0 max-w-4xl w-full rounded-3xl text-center mt-12">
             {current.ava ? (
-              <div className="w-40 h-40 mx-auto mb-6 rounded-full overflow-hidden border-4 border-cyan-500 shadow-lg bg-gray-100">
+              <div className="mt-12 w-40 h-40 mx-auto mb-6 rounded-full overflow-hidden border-4 border-cyan-500 shadow-lg bg-gray-100">
                 <img
                   src={current.ava}
-                              alt={current.fullName}
+                  alt={current.fullName}
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -335,17 +383,23 @@ const CheckinDisplay: React.FC = () => {
               </div>
             )}
 
-            <h2 className="text-3xl font-semibold text-gray-700 mb-2">CHÀO MỪNG</h2>
+            <h2 className="text-3xl font-semibold text-gray-700 mb-2">
+              CHÀO MỪNG
+            </h2>
             <div className="text-5xl font-extrabold text-cyan-700 mb-3">
               {current.fullName}
             </div>
 
             {current.unit && (
-              <div className="text-xl text-gray-600 mb-1">Đoàn đại biểu <b>{current.unit}</b></div>
+              <div className="text-xl text-gray-600 mb-1">
+                Đoàn đại biểu <b>{current.unit}</b>
+              </div>
             )}
 
             {current.position && (
-              <div className="text-base text-gray-500 mb-2">{current.position}</div>
+              <div className="text-base text-gray-500 mb-2">
+                {current.position}
+              </div>
             )}
 
             <div className="text-sm text-gray-500 mb-4">
@@ -359,6 +413,27 @@ const CheckinDisplay: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* ⭐ Overlay bật âm thanh lần đầu */}
+      {!audioUnlocked && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-white/95 rounded-3xl px-8 py-6 text-center shadow-2xl max-w-md w-full">
+            <h2 className="text-xl font-semibold text-gray-800 mb-3">
+              Bật âm thanh hệ thống
+            </h2>
+            <p className="text-sm text-gray-600 mb-5">
+              Vui lòng bấm nút bên dưới để cho phép hệ thống đọc tên đại biểu
+              khi điểm danh.
+            </p>
+            <button
+              onClick={handleUnlockAudio}
+              className="px-6 py-3 rounded-full bg-emerald-600 text-white font-semibold text-sm hover:bg-emerald-700 transition shadow-md"
+            >
+              Cho phép phát âm thanh
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
